@@ -28,5 +28,6 @@ AC_CHECK_LIB([mbedx509], [mbedtls_x509_crt_init], [ ], [
 PKG_CHECK_MODULES(CMUMBLE, [libprotobuf-c ])
 
 AC_OUTPUT([
-Makefile
+	Makefile
+	src/Makefile
 ])
