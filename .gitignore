@@ -50,3 +50,7 @@
 /src/Makefile.in
 /src/.deps
 /src/cmumble
+
+.anjuta_sym_db.db
+cmumble.anjuta
+*~
