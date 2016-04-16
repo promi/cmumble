@@ -100,6 +100,7 @@ int main(void)
 		cmumble_network_read_bytes(net, buffer, header.length);
 		struct _MumbleProto__Version *version =
 			mumble_proto__version__unpack(NULL, header.length, buffer);
+		free(buffer);
 
 		printf("version.has_version = %d\n", version->has_version);
 		printf("version.version = %x\n", version->version);
