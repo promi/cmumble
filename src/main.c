@@ -38,7 +38,7 @@ int main(void)
 	cmumble_network_connect(net, SERVER_NAME, SERVER_PORT);
 
 	{
-		struct _MumbleProto__Version version = MUMBLE_PROTO__VERSION__INIT;
+		MumbleProto__Version version = MUMBLE_PROTO__VERSION__INIT;
 		version.has_version = 1;
 		version.version = 0x00010300;
 		version.release = "Git version";
@@ -61,7 +61,7 @@ int main(void)
 	}
 
 	{
-		struct _MumbleProto__Authenticate authenticate =
+		MumbleProto__Authenticate authenticate =
 			MUMBLE_PROTO__AUTHENTICATE__INIT;
 		authenticate.username = "Testclient1";
 		authenticate.password = "";
@@ -98,7 +98,7 @@ int main(void)
 			exit_with_message(25, "calloc failed");
 		}
 		cmumble_network_read_bytes(net, buffer, header.length);
-		struct _MumbleProto__Version *version =
+		MumbleProto__Version *version =
 			mumble_proto__version__unpack(NULL, header.length, buffer);
 		free(buffer);
 
