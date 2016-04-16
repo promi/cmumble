@@ -87,6 +87,7 @@ int main(void)
 		free(buffer);
 	}
 
+	while(1)
 	{
 		cmumble_packet_header header = cmumble_network_read_packet_header(net);
 		printf ("message type = %d\n", header.type);
@@ -98,16 +99,19 @@ int main(void)
 			exit_with_message(25, "calloc failed");
 		}
 		cmumble_network_read_bytes(net, buffer, header.length);
-		MumbleProto__Version *version =
-			mumble_proto__version__unpack(NULL, header.length, buffer);
-		free(buffer);
+		if (header.type == MUMBLE_PACKET_TYPE__VERSION)
+		{
+			MumbleProto__Version *version =
+				mumble_proto__version__unpack(NULL, header.length, buffer);
 
-		printf("version.has_version = %d\n", version->has_version);
-		printf("version.version = %x\n", version->version);
-		printf("version.release = %s\n", version->release);
-		printf("version.os = %s\n", version->os);
-		printf("version.os_version = %s\n", version->os_version);
-		mumble_proto__version__free_unpacked(version, NULL);
+			printf("version.has_version = %d\n", version->has_version);
+			printf("version.version = %x\n", version->version);
+			printf("version.release = %s\n", version->release);
+			printf("version.os = %s\n", version->os);
+			printf("version.os_version = %s\n", version->os_version);
+			mumble_proto__version__free_unpacked(version, NULL);
+		}
+		free(buffer);
 	}
 	cmumble_network_free(net);
 	return 0;
