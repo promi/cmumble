@@ -63,7 +63,7 @@ int main(void)
 	{
 		struct _MumbleProto__Authenticate authenticate =
 			MUMBLE_PROTO__AUTHENTICATE__INIT;
-		authenticate.username = "Phobos1k";
+		authenticate.username = "Testclient1";
 		authenticate.password = "";
 		authenticate.n_tokens = 0;
 		authenticate.tokens = NULL;
