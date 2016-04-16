@@ -28,6 +28,10 @@ static const char pers[] = "cmumble";
 cmumble_network* cmumble_network_init ()
 {
 	cmumble_network* net = calloc(1, sizeof(cmumble_network));
+	if (net == NULL)
+	{
+		exit_with_message(24, "calloc failed");
+	}
 	
 	mbedtls_net_init(&net->server_fd);
 	mbedtls_ssl_init(&net->ssl);
@@ -141,12 +145,17 @@ void cmumble_network_write_bytes(cmumble_network *net, const uint8_t *buffer,
 cmumble_packet_header cmumble_network_read_packet_header(cmumble_network *net)
 {
 	const int buffer_length = 6;
-	uint8_t buffer[buffer_length];
+	uint8_t *buffer = calloc(1, buffer_length);
+	if (buffer == NULL)
+	{
+		exit_with_message(26, "calloc failed");
+	}
 	cmumble_network_read_bytes(net, buffer, buffer_length);
 	cmumble_packet_header header = {
 		ntohs(*(uint16_t*)buffer),
 		ntohl(*(uint32_t*)(buffer + 2))
 	};
+	free(buffer);
 	return header;
 }
 
@@ -154,10 +163,15 @@ void cmumble_network_write_packet_header (cmumble_network *net,
                                           const cmumble_packet_header *header)
 {
 	const int buffer_length = 6;
-	uint8_t buffer[buffer_length];
+	uint8_t *buffer = calloc(1, buffer_length);
+	if (buffer == NULL)
+	{
+		exit_with_message(27, "calloc failed");
+	}
 	*(uint16_t*)buffer = htons(header->type);
 	*(uint32_t*)(buffer + 2) = htonl(header->length);
 	cmumble_network_write_bytes(net, (const uint8_t*) buffer, buffer_length);
+	free(buffer);
 }
 
 void cmumble_network_free(cmumble_network* net)
