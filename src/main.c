@@ -63,8 +63,7 @@ send_our_version (MumbleNetwork *net, GError **err)
   if (buffer == NULL)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL,
-                   "Could not allocate buffer for version packet");
+                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
       return;
     }
 
@@ -74,6 +73,104 @@ send_our_version (MumbleNetwork *net, GError **err)
     {
       g_propagate_error (err, tmp_error);
     }
+  free (buffer);
+}
+
+void
+send_authenticate (MumbleNetwork *net, const gchar *username, GError **err)
+{
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (username != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  MumbleProto__Authenticate authenticate = MUMBLE_PROTO__AUTHENTICATE__INIT;
+  authenticate.username = (gchar *) username;
+  authenticate.password = "";
+  authenticate.n_tokens = 0;
+  authenticate.tokens = NULL;
+  authenticate.n_celt_versions = 0;
+  authenticate.celt_versions = NULL;
+  authenticate.has_opus = 1;
+  authenticate.opus = 1;
+
+  MumblePacketHeader header = {
+    MUMBLE_PACKET_TYPE__AUTHENTICATE,
+    mumble_proto__authenticate__get_packed_size (&authenticate)
+  };
+
+  GError *tmp_error = NULL;
+  mumble_network_write_packet_header (net, &header, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+
+  uint8_t *buffer = calloc (1, header.length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
+      return;
+    }
+
+  mumble_proto__authenticate__pack (&authenticate, buffer);
+
+  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      free (buffer);
+      return;
+    }
+  free (buffer);
+}
+
+void
+receive_packet (MumbleNetwork *net, GError **err)
+{
+  MumblePacketHeader header;
+  GError *tmp_error = NULL;
+  mumble_network_read_packet_header (net, &header, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+
+  printf ("message type = %d\n", header.type);
+  printf ("message length = %d\n", header.length);
+  fflush (stdout);
+
+  uint8_t *buffer = calloc (1, header.length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
+      return;
+    }
+
+  mumble_network_read_bytes (net, buffer, header.length, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      free (buffer);
+      return;
+    }
+
+  if (header.type == MUMBLE_PACKET_TYPE__VERSION)
+    {
+      MumbleProto__Version *version =
+        mumble_proto__version__unpack (NULL, header.length, buffer);
+
+      printf ("version.has_version = %d\n", version->has_version);
+      printf ("version.version = %x\n", version->version);
+      printf ("version.release = %s\n", version->release);
+      printf ("version.os = %s\n", version->os);
+      printf ("version.os_version = %s\n", version->os_version);
+      mumble_proto__version__free_unpacked (version, NULL);
+    }
+
   free (buffer);
 }
 
@@ -92,75 +189,45 @@ main (void)
   if (err != NULL)
     {
       fprintf (stderr, "could not connect to the server: %s\n", err->message);
-      g_error_free (err);
-      g_object_unref (net);
-      return 1;
+      goto fail_cleanup;
     }
 
-  /*
-     {
-     MumbleProto__Authenticate authenticate = MUMBLE_PROTO__AUTHENTICATE__INIT;
-     authenticate.username = "Testclient1";
-     authenticate.password = "";
-     authenticate.n_tokens = 0;
-     authenticate.tokens = NULL;
-     authenticate.n_celt_versions = 0;
-     authenticate.celt_versions = NULL;
-     authenticate.has_opus = 1;
-     authenticate.opus = 1;
+  send_our_version (net, &err);
+  if (err != NULL)
+    {
+      fprintf (stderr, "could not send our version to the server: %s\n",
+               err->message);
+      goto fail_cleanup;
+    }
 
-     cmumble_packet_header header = {
-     MUMBLE_PACKET_TYPE__AUTHENTICATE,
-     mumble_proto__authenticate__get_packed_size (&authenticate)
-     };
-     cmumble_network_write_packet_header (net, &header);
-     uint8_t *buffer = calloc (1, header.length);
-     if (buffer == NULL)
-     {
-     exit_with_message (24, "calloc failed");
-     }
-     mumble_proto__authenticate__pack (&authenticate, buffer);
-     cmumble_network_write_bytes (net, buffer, header.length);
-     free (buffer);
-     }
+  send_authenticate (net, "Testclient1", &err);
+  if (err != NULL)
+    {
+      fprintf (stderr, "could not send authenticate to the server: %s\n",
+               err->message);
+      goto fail_cleanup;
+    }
 
-     // Main loop
-     // TODO: Send ping package, so that the server doesn't kick us ;)
-     // Also probably better use select() instead of polling with read()
-     while (1)
-     {
-     cmumble_packet_header header;
-     cmumble_network_read_packet_header (net, &header);
-     printf ("message type = %d\n", header.type);
-     printf ("message length = %d\n", header.length);
-     fflush (stdout);
-     uint8_t *buffer = calloc (1, header.length);
-     if (buffer == NULL)
-     {
-     exit_with_message (25, "calloc failed");
-     }
-     cmumble_network_read_bytes (net, buffer, header.length);
-     if (header.type == MUMBLE_PACKET_TYPE__VERSION)
-     {
-     MumbleProto__Version *version =
-     mumble_proto__version__unpack (NULL, header.length, buffer);
+  // Main loop
+  // TODO: Send ping package, so that the server doesn't kick us ;)
+  // Also probably better use select() instead of polling with read()
+  while (1)
+    {
+      receive_packet (net, &err);
+      if (err != NULL)
+        {
+          fprintf (stderr,
+                   "could not receive packet from to the server: %s\n",
+                   err->message);
+          goto fail_cleanup;
+        }
+    }
 
-     printf ("version.has_version = %d\n", version->has_version);
-     printf ("version.version = %x\n", version->version);
-     printf ("version.release = %s\n", version->release);
-     printf ("version.os = %s\n", version->os);
-     printf ("version.os_version = %s\n", version->os_version);
-     mumble_proto__version__free_unpacked (version, NULL);
-     }
-     free (buffer);
-     }
-
-     ret = 0;
-     fail_network_connect:
-     cmumble_network_free (net);
-     fail_network_init:
-     return ret;
-   */
   g_object_unref (net);
   return 0;
+
+fail_cleanup:
+  g_error_free (err);
+  g_object_unref (net);
+  return 1;
 }

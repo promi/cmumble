@@ -262,7 +262,7 @@ mumble_network_write_packet_header (MumbleNetwork *net,
   *(uint16_t *) buffer = htons (header->type);
   *(uint32_t *) (buffer + 2) = htonl (header->length);
 
-  GError *tmp_error;
+  GError *tmp_error = NULL;
   mumble_network_write_bytes (net, (const guint8 *) buffer, buffer_length,
                               &tmp_error);
   if (tmp_error != NULL)
