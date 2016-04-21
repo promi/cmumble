@@ -1,4 +1,4 @@
-/* -*- Mode: C; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
+/* -*- Mode: C; indent-tabs-mode: nil; c-basic-offset: 2; tab-width: 8 -*-  */
 /*
     cmumble - Mumble client written in C
     Copyright (C) 2016 Prometheus <prometheus@unterderbruecke.de>
@@ -17,17 +17,19 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
+#ifndef __ERROR_H__
+#define __ERROR_H__
 
-#include "utils.h"
+#include <glib.h>
 
-void exit_with_message(int exit_code, const char *fmt, ...)
+typedef enum _MumbleNetworkError
 {
-	va_list args1;
-	va_start(args1, fmt);
-	vfprintf(stderr, fmt, args1);
-	va_end(args1);
-	exit(exit_code);
-}
+  MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL,
+  MUMBLE_NETWORK_ERROR_FAIL
+} MumbleNetworkError;
+
+#define MUMBLE_NETWORK_ERROR mumble_network_error_quark ()
+
+GQuark mumble_network_error_quark (void);
+
+#endif // __ERROR_H__

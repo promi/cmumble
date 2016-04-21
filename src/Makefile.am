@@ -15,11 +15,10 @@ cmumble_SOURCES = \
 	Mumble.pb-c.h \
 	network.c \
 	network.h \
-	network_private.h \
-	utils.h \
-	utils.c \
 	packet_header.h \
-	network_common.h
+	error.h \
+	indent.sh \
+	error.c
 
 cmumble_CFLAGS = -std=c11 \
 	-Wall \

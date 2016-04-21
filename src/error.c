@@ -1,4 +1,4 @@
-/* -*- Mode: C; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
+/* -*- Mode: C; indent-tabs-mode: nil; c-basic-offset: 2; tab-width: 8 -*-  */
 /*
     cmumble - Mumble client written in C
     Copyright (C) 2016 Prometheus <prometheus@unterderbruecke.de>
@@ -17,6 +17,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#pragma once
+#include "error.h"
 
-void exit_with_message(int exit_code, const char *fmt, ...);
+GQuark
+mumble_network_error_quark (void)
+{
+  return g_quark_from_static_string ("mumble-network-error-quark");
+}

@@ -1,4 +1,4 @@
-/* -*- Mode: C; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
+/* -*- Mode: C; indent-tabs-mode: nil; c-basic-offset: 2; tab-width: 8 -*-  */
 /*
     cmumble - Mumble client written in C
     Copyright (C) 2016 Prometheus <prometheus@unterderbruecke.de>
@@ -19,169 +19,254 @@
 
 #include <arpa/inet.h>
 #include <string.h>
+#include <mbedtls/net.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/debug.h>
 
-#include "utils.h"
-#include "network_private.h"
+#include "error.h"
+#include "network.h"
+
+typedef struct _MumbleNetwork
+{
+  mbedtls_net_context server_fd;
+  mbedtls_entropy_context entropy;
+  mbedtls_ctr_drbg_context ctr_drbg;
+  mbedtls_ssl_context ssl;
+  mbedtls_ssl_config conf;
+  mbedtls_x509_crt cacert;
+} MumbleNetwork;
+
+G_DEFINE_TYPE (MumbleNetwork, mumble_network, G_TYPE_OBJECT)
 
 static const char pers[] = "cmumble";
 
-cmumble_network* cmumble_network_init ()
-{
-	cmumble_network* net = calloc(1, sizeof(cmumble_network));
-	if (net == NULL)
-	{
-		exit_with_message(24, "calloc failed");
-	}
-	
-	mbedtls_net_init(&net->server_fd);
-	mbedtls_ssl_init(&net->ssl);
-	mbedtls_ssl_config_init(&net->conf);
-	mbedtls_x509_crt_init(&net->cacert);
-	mbedtls_ctr_drbg_init(&net->ctr_drbg);
-	mbedtls_entropy_init(&net->entropy);
+static void mumble_network_finalize (GObject *object);
 
-	int ret;
-	if((ret = mbedtls_ctr_drbg_seed(&net->ctr_drbg, mbedtls_entropy_func,
-	                                &net->entropy, (const uint8_t*) pers,
-	                                strlen(pers))) != 0)
-	{
-		exit_with_message(10,
-		                  " failed\n  ! mbedtls_ctr_drbg_seed returned %d\n",
-		                  ret);
-	}
-	return net;
+static void 
+mumble_network_class_init (MumbleNetworkClass *klass)
+{
+  GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+
+  gobject_class->finalize = mumble_network_finalize;
 }
 
-static void my_debug(void *ctx, int level, const char *file, int line,
-                     const char *str)
+static void
+mumble_network_init (MumbleNetwork *net)
 {
-	((void)level);
-	fprintf((FILE *)ctx, "%s:%04d: %s", file, line, str);
-	fflush((FILE *)ctx);
+  mbedtls_net_init (&net->server_fd);
+  mbedtls_ssl_init (&net->ssl);
+  mbedtls_ssl_config_init (&net->conf);
+  mbedtls_x509_crt_init (&net->cacert);
+  mbedtls_ctr_drbg_init (&net->ctr_drbg);
+  mbedtls_entropy_init (&net->entropy);
 }
 
-void cmumble_network_connect (cmumble_network* net, const char* server_name,
-                              const char* server_port)
+static void
+mumble_network_finalize (GObject *object)
 {
-	int ret = 0;
-	if((ret = mbedtls_net_connect(&net->server_fd, server_name, server_port,
-	                              MBEDTLS_NET_PROTO_TCP)) != 0)
-	{
-		printf( " failed\n  ! mbedtls_net_connect returned %d\n\n", ret );
-		exit(-2);
-	}
+  MumbleNetwork *net = MUMBLE_NETWORK (object);
+  mbedtls_net_free (&net->server_fd);
+  mbedtls_ssl_free (&net->ssl);
+  mbedtls_ssl_config_free (&net->conf);
+  mbedtls_ctr_drbg_free (&net->ctr_drbg);
+  mbedtls_entropy_free (&net->entropy);
 
-	if((ret = mbedtls_ssl_config_defaults(&net->conf, MBEDTLS_SSL_IS_CLIENT,
-	                                      MBEDTLS_SSL_TRANSPORT_STREAM,
-	                                      MBEDTLS_SSL_PRESET_DEFAULT)) != 0)
-	{
-		printf(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n",
-		       ret);
-		exit(-3);
-	}
-
-	mbedtls_ssl_conf_authmode(&net->conf, MBEDTLS_SSL_VERIFY_NONE);
-
-	mbedtls_ssl_conf_rng(&net->conf, mbedtls_ctr_drbg_random, &net->ctr_drbg);
-	mbedtls_ssl_conf_dbg(&net->conf, my_debug, stdout);
-
-	if((ret = mbedtls_ssl_setup(&net->ssl, &net->conf)) != 0)
-	{
-		printf( " failed\n  ! mbedtls_ssl_setup returned %d\n\n", ret);
-		exit(-7);
-	}
-
-	mbedtls_ssl_set_bio(&net->ssl, &net->server_fd, mbedtls_net_send, mbedtls_net_recv,
-	                    NULL);
-
-	while((ret = mbedtls_ssl_handshake(&net->ssl)) != 0)
-	{
-		if(ret != MBEDTLS_ERR_SSL_WANT_READ &&
-		   ret != MBEDTLS_ERR_SSL_WANT_WRITE)
-		{
-			printf(" failed\n  ! mbedtls_ssl_handshake returned -0x%x\n\n",
-			       -ret);
-			exit(-8);
-		}
-	}
+  GObjectClass *parent_class = G_OBJECT_CLASS (mumble_network_parent_class);
+  (*parent_class->finalize) (object);
 }
 
-void cmumble_network_read_bytes(cmumble_network *net, uint8_t *buffer,
-                                size_t length)
+MumbleNetwork *
+mumble_network_new (void)
 {
-	uint8_t *current = buffer;
-	int ret = 0;
-	size_t n_read = 0;
-	while(n_read < length)
-	{
-		ret = mbedtls_ssl_read(&net->ssl, current, length - n_read);
-		if(ret <= 0)
-		{
-			exit_with_message(5, " failed\n  ! ssl_read returned %d\n\n", ret);
-		}
-		n_read += ret;
-		current += ret;
-	}
+  return g_object_new (MUMBLE_TYPE_NETWORK, NULL);
 }
 
-void cmumble_network_write_bytes(cmumble_network *net, const uint8_t *buffer,
-                                 size_t length)
+static void
+my_debug (void *ctx, int level, const char *file, int line, const char *str)
 {
-	uint8_t *current = (uint8_t *) buffer;
-	int ret = 0;
-	size_t n_written = 0;
-	while(n_written < length)
-	{
-		ret = mbedtls_ssl_write(&net->ssl, current, length - n_written);
-		if(ret <= 0)
-		{
-			exit_with_message(4, " failed\n  ! write returned %d\n\n", ret);
-		}
-		n_written += ret;
-		current += ret;
-	}
+  ((void) level);
+  fprintf ((FILE *) ctx, "%s:%04d: %s", file, line, str);
+  fflush ((FILE *) ctx);
 }
 
-cmumble_packet_header cmumble_network_read_packet_header(cmumble_network *net)
+void
+mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
+                        const gchar *server_port, GError **err)
 {
-	const int buffer_length = 6;
-	uint8_t *buffer = calloc(1, buffer_length);
-	if (buffer == NULL)
-	{
-		exit_with_message(26, "calloc failed");
-	}
-	cmumble_network_read_bytes(net, buffer, buffer_length);
-	cmumble_packet_header header = {
-		ntohs(*(uint16_t*)buffer),
-		ntohl(*(uint32_t*)(buffer + 2))
-	};
-	free(buffer);
-	return header;
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (server_name != NULL);
+  g_return_if_fail (server_port != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  int ret;
+  if ((ret = mbedtls_ctr_drbg_seed (&net->ctr_drbg, mbedtls_entropy_func,
+                                    &net->entropy, (const uint8_t *) pers,
+                                    strlen (pers))) != 0)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                   "mbedtls_ctr_drbg_seed returned %x", ret);
+      return;
+    }
+
+  if ((ret = mbedtls_net_connect (&net->server_fd, server_name, server_port,
+                                  MBEDTLS_NET_PROTO_TCP)) != 0)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                   "mbedtls_net_connect returned %x", ret);
+      return;
+    }
+
+  if ((ret = mbedtls_ssl_config_defaults (&net->conf, MBEDTLS_SSL_IS_CLIENT,
+                                          MBEDTLS_SSL_TRANSPORT_STREAM,
+                                          MBEDTLS_SSL_PRESET_DEFAULT)) != 0)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                   "mbedtls_ssl_config_defaults returned %x", ret);
+      return;
+    }
+
+  mbedtls_ssl_conf_authmode (&net->conf, MBEDTLS_SSL_VERIFY_NONE);
+
+  mbedtls_ssl_conf_rng (&net->conf, mbedtls_ctr_drbg_random, &net->ctr_drbg);
+  mbedtls_ssl_conf_dbg (&net->conf, my_debug, stdout);
+
+  if ((ret = mbedtls_ssl_setup (&net->ssl, &net->conf)) != 0)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                   "mbedtls_ssl_setup returned %x", ret);
+      return;
+    }
+
+  mbedtls_ssl_set_bio (&net->ssl, &net->server_fd, mbedtls_net_send,
+                       mbedtls_net_recv, NULL);
+
+  while ((ret = mbedtls_ssl_handshake (&net->ssl)) != 0)
+    {
+      if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
+          ret != MBEDTLS_ERR_SSL_WANT_WRITE)
+        {
+          g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                       "mbedtls_ssl_handshake returned %x", ret);
+          return;
+        }
+    }
 }
 
-void cmumble_network_write_packet_header (cmumble_network *net, 
-                                          const cmumble_packet_header *header)
+void
+mumble_network_read_bytes (MumbleNetwork *net, guint8 *buffer,
+                           size_t length, GError **err)
 {
-	const int buffer_length = 6;
-	uint8_t *buffer = calloc(1, buffer_length);
-	if (buffer == NULL)
-	{
-		exit_with_message(27, "calloc failed");
-	}
-	*(uint16_t*)buffer = htons(header->type);
-	*(uint32_t*)(buffer + 2) = htonl(header->length);
-	cmumble_network_write_bytes(net, (const uint8_t*) buffer, buffer_length);
-	free(buffer);
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (buffer != NULL);
+  g_return_if_fail (length > 0);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  uint8_t *current = buffer;
+  int ret = 0;
+  size_t n_read = 0;
+  while (n_read < length)
+    {
+      ret = mbedtls_ssl_read (&net->ssl, current, length - n_read);
+      if (ret <= 0)
+        {
+          g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                       "mbedtls_ssl_read returned %x", ret);
+          return;
+        }
+      n_read += ret;
+      current += ret;
+    }
 }
 
-void cmumble_network_free(cmumble_network* net)
+void
+mumble_network_write_bytes (MumbleNetwork *net, const guint8 *buffer,
+                            size_t length, GError **err)
 {
-	mbedtls_net_free(&net->server_fd);
-	mbedtls_ssl_free(&net->ssl);
-	mbedtls_ssl_config_free(&net->conf);
-	// TODO: Check if there is a x509_crt_free and if it must be called?
-	mbedtls_ctr_drbg_free(&net->ctr_drbg);
-	mbedtls_entropy_free(&net->entropy);
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (buffer != NULL);
+  g_return_if_fail (length > 0);
+  g_return_if_fail (err == NULL || *err == NULL);
 
-	free(net);
+  uint8_t *current = (uint8_t *) buffer;
+  int ret = 0;
+  size_t n_written = 0;
+  while (n_written < length)
+    {
+      ret = mbedtls_ssl_write (&net->ssl, current, length - n_written);
+      if (ret <= 0)
+        {
+          g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                       "mbedtls_ssl_write returned %x", ret);
+          return;
+        }
+      n_written += ret;
+      current += ret;
+    }
+}
+
+void
+mumble_network_read_packet_header (MumbleNetwork *net,
+                                   MumblePacketHeader *packet_header,
+                                   GError **err)
+{
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (packet_header != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  const size_t buffer_length = 6;
+  guint8 *buffer = calloc (1, buffer_length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                   "calloc failed");
+      return;
+    }
+
+  GError *tmp_error = NULL;
+  mumble_network_read_bytes (net, buffer, buffer_length, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      free (buffer);
+      return;
+    }
+
+  packet_header->type = ntohs (*(uint16_t *) buffer);
+  packet_header->length = ntohl (*(uint32_t *) (buffer + 2));
+
+  free (buffer);
+}
+
+void
+mumble_network_write_packet_header (MumbleNetwork *net,
+                                    const MumblePacketHeader *header,
+                                    GError **err)
+{
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (header != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  const int buffer_length = 6;
+  uint8_t *buffer = calloc (1, buffer_length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
+                   "calloc failed");
+      return;
+    }
+
+  *(uint16_t *) buffer = htons (header->type);
+  *(uint32_t *) (buffer + 2) = htonl (header->length);
+
+  GError *tmp_error;
+  mumble_network_write_bytes (net, (const guint8 *) buffer, buffer_length,
+                              &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+    }
+
+  free (buffer);
 }

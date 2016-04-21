@@ -1,4 +1,4 @@
-/* -*- Mode: C; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
+/* -*- Mode: C; indent-tabs-mode: nil; c-basic-offset: 2; tab-width: 8 -*-  */
 /*
     cmumble - Mumble client written in C
     Copyright (C) 2016 Prometheus <prometheus@unterderbruecke.de>
@@ -17,12 +17,15 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#pragma once
+#ifndef __PACKET_HEADER_H__
+#define __PACKET_HEADER_H__
 
-#include <stdint.h>
+#include <glib.h>
 
-typedef struct _cmumble_packet_header
+typedef struct _MumblePacketHeader
 {
-	uint16_t type;
-	uint32_t length;
-} cmumble_packet_header;
+  guint16 type;
+  guint32 length;
+} MumblePacketHeader;
+
+#endif //  __PACKET_HEADER_H__

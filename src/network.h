@@ -1,4 +1,4 @@
-/* -*- Mode: C; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
+/* -*- Mode: C; indent-tabs-mode: nil; c-basic-offset: 2; tab-width: 8 -*-  */
 /*
     cmumble - Mumble client written in C
     Copyright (C) 2016 Prometheus <prometheus@unterderbruecke.de>
@@ -17,10 +17,38 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#pragma once
+#ifndef __NETWORK_H__
+#define __NETWORK_H__
 
+#include <glib.h>
+#include <glib-object.h>
 #include "packet_header.h"
 
-typedef void cmumble_network;
+G_BEGIN_DECLS
 
-#include "network_common.h"
+#define MUMBLE_TYPE_NETWORK mumble_network_get_type ()
+G_DECLARE_FINAL_TYPE (MumbleNetwork, mumble_network, MUMBLE, NETWORK, GObject)
+
+MumbleNetwork *mumble_network_new ();
+
+void mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
+                             const gchar *server_port, GError **err);
+
+void mumble_network_read_bytes (MumbleNetwork *net, guint8 *buffer,
+                                size_t buffer_length, GError **err);
+
+void mumble_network_read_packet_header (MumbleNetwork *net,
+                                        MumblePacketHeader *packet_header,
+                                        GError **err);
+
+void mumble_network_write_bytes (MumbleNetwork *net, const guint8 *buffer,
+                                 size_t buffer_length,
+                                 GError **err);
+
+void mumble_network_write_packet_header (MumbleNetwork *net,
+                                         const MumblePacketHeader *header,
+                                         GError **err);
+
+G_END_DECLS
+
+#endif // __NETWORK_H__
