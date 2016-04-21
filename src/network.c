@@ -30,6 +30,8 @@
 
 typedef struct _MumbleNetwork
 {
+  GObject parent;
+
   mbedtls_net_context server_fd;
   mbedtls_entropy_context entropy;
   mbedtls_ctr_drbg_context ctr_drbg;
