@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <mbedtls/debug.h>
 
 #include "Mumble.pb-c.h"
 
@@ -177,6 +178,8 @@ receive_packet (MumbleNetwork *net, GError **err)
 int
 main (void)
 {
+  mbedtls_debug_set_threshold (2);
+  
   MumbleNetwork *net = mumble_network_new ();
   if (net == NULL)
     {

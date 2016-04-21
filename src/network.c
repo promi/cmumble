@@ -41,13 +41,11 @@ typedef struct _MumbleNetwork
 } MumbleNetwork;
 
 G_DEFINE_TYPE (MumbleNetwork, mumble_network, G_TYPE_OBJECT)
+     static const char pers[] = "cmumble";
 
-static const char pers[] = "cmumble";
+     static void mumble_network_finalize (GObject *object);
 
-static void mumble_network_finalize (GObject *object);
-
-static void 
-mumble_network_class_init (MumbleNetworkClass *klass)
+     static void mumble_network_class_init (MumbleNetworkClass *klass)
 {
   GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
 
@@ -108,7 +106,7 @@ mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
                                     strlen (pers))) != 0)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                   "mbedtls_ctr_drbg_seed returned %x", ret);
+                   "mbedtls_ctr_drbg_seed returned %d (-0x%04x)", ret, -ret);
       return;
     }
 
@@ -116,7 +114,7 @@ mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
                                   MBEDTLS_NET_PROTO_TCP)) != 0)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                   "mbedtls_net_connect returned %x", ret);
+                   "mbedtls_net_connect returned %d (-0x%04x)", ret, -ret);
       return;
     }
 
@@ -125,7 +123,8 @@ mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
                                           MBEDTLS_SSL_PRESET_DEFAULT)) != 0)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                   "mbedtls_ssl_config_defaults returned %x", ret);
+                   "mbedtls_ssl_config_defaults returned %d (-0x%04x)", ret,
+                   -ret);
       return;
     }
 
@@ -137,7 +136,7 @@ mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
   if ((ret = mbedtls_ssl_setup (&net->ssl, &net->conf)) != 0)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                   "mbedtls_ssl_setup returned %x", ret);
+                   "mbedtls_ssl_setup returned %d (-0x%04x)", ret, -ret);
       return;
     }
 
@@ -150,7 +149,8 @@ mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
           ret != MBEDTLS_ERR_SSL_WANT_WRITE)
         {
           g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                       "mbedtls_ssl_handshake returned %x", ret);
+                       "mbedtls_ssl_handshake returned %d (-0x%04x)", ret,
+                       -ret);
           return;
         }
     }
@@ -174,7 +174,7 @@ mumble_network_read_bytes (MumbleNetwork *net, guint8 *buffer,
       if (ret <= 0)
         {
           g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                       "mbedtls_ssl_read returned %x", ret);
+                       "mbedtls_ssl_read returned %d (-0x%04x)", ret, -ret);
           return;
         }
       n_read += ret;
@@ -200,7 +200,7 @@ mumble_network_write_bytes (MumbleNetwork *net, const guint8 *buffer,
       if (ret <= 0)
         {
           g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                       "mbedtls_ssl_write returned %x", ret);
+                       "mbedtls_ssl_write returned %d (-0x%04x)", ret, -ret);
           return;
         }
       n_written += ret;
