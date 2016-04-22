@@ -18,7 +18,9 @@ cmumble_SOURCES = \
 	packet_header.h \
 	error.h \
 	indent.sh \
-	error.c
+	error.c \
+	mbedtls_network.c \
+	mbedtls_network.h
 
 cmumble_CFLAGS = -std=c11 \
 	-Wall \

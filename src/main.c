@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "packet_header.h"
 #include "network.h"
+#include "mbedtls_network.h"
 
 #define SERVER_PORT "10012"
 #define SERVER_NAME "voice.mumbletreff.de"
@@ -178,9 +179,9 @@ receive_packet (MumbleNetwork *net, GError **err)
 int
 main (void)
 {
-  mbedtls_debug_set_threshold (2);
-  
-  MumbleNetwork *net = mumble_network_new ();
+  // mbedtls_debug_set_threshold (2);
+
+  MumbleNetwork *net = MUMBLE_NETWORK (mumble_mbedtls_network_new ());
   if (net == NULL)
     {
       fprintf (stderr, "could not allocate MumbleNetwork class\n");
