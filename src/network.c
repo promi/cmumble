@@ -68,7 +68,7 @@ mumble_network_new (void)
 
 void
 mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
-                        const gchar *server_port, GError **err)
+                        guint16 server_port, GError **err)
 {
   MumbleNetworkClass *klass;
   klass = MUMBLE_NETWORK_GET_CLASS (net);

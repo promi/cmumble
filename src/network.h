@@ -33,7 +33,7 @@ G_DECLARE_DERIVABLE_TYPE (MumbleNetwork, mumble_network, MUMBLE, NETWORK,
        GObjectClass parent_class;
 
        void (*connect) (MumbleNetwork *net, const gchar *server_name,
-                        const gchar *server_port, GError **err);
+                        guint16 server_port, GError **err);
 
        void (*read_bytes) (MumbleNetwork *net, guint8 *buffer,
                            size_t buffer_length, GError **err);
@@ -46,7 +46,7 @@ G_DECLARE_DERIVABLE_TYPE (MumbleNetwork, mumble_network, MUMBLE, NETWORK,
 
      void mumble_network_connect (MumbleNetwork *net,
                                   const gchar *server_name,
-                                  const gchar *server_port, GError **err);
+                                  guint16 server_port, GError **err);
 
      void mumble_network_read_bytes (MumbleNetwork *net, guint8 *buffer,
                                      size_t buffer_length, GError **err);

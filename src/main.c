@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mbedtls/debug.h>
+#include <gio/gio.h>
 
 #include "Mumble.pb-c.h"
 
@@ -28,9 +29,6 @@
 #include "packet_header.h"
 #include "network.h"
 #include "mbedtls_network.h"
-
-#define SERVER_PORT "10012"
-#define SERVER_NAME "voice.mumbletreff.de"
 
 #define MUMBLE_PACKET_TYPE__VERSION 0
 #define MUMBLE_PACKET_TYPE__AUTHENTICATE 2
@@ -180,6 +178,14 @@ int
 main (void)
 {
   // mbedtls_debug_set_threshold (2);
+  GSettings *set = g_settings_new ("com.github.promi.cmumble");
+  if (set == NULL)
+  {
+  }
+  gchar *server_name = g_settings_get_string (set, "server-name");
+  guint16 server_port = g_settings_get_int (set, "server-port");
+  gchar *user_name = g_settings_get_string (set, "user-name");
+  g_object_unref (set);
 
   MumbleNetwork *net = MUMBLE_NETWORK (mumble_mbedtls_network_new ());
   if (net == NULL)
@@ -189,7 +195,7 @@ main (void)
     }
 
   GError *err = NULL;
-  mumble_network_connect (net, SERVER_NAME, SERVER_PORT, &err);
+  mumble_network_connect (net, server_name, server_port, &err);
   if (err != NULL)
     {
       fprintf (stderr, "could not connect to the server: %s\n", err->message);
@@ -204,7 +210,7 @@ main (void)
       goto fail_cleanup;
     }
 
-  send_authenticate (net, "Testclient1", &err);
+  send_authenticate (net, user_name, &err);
   if (err != NULL)
     {
       fprintf (stderr, "could not send authenticate to the server: %s\n",
@@ -227,11 +233,16 @@ main (void)
         }
     }
 
-  g_object_unref (net);
-  return 0;
+  int ret = 0;
+  goto finally;
 
 fail_cleanup:
   g_error_free (err);
+  ret = 1;
+
+finally:
+  g_free (user_name);
+  g_free (server_name);
   g_object_unref (net);
-  return 1;
+  return ret;
 }

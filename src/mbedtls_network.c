@@ -104,11 +104,10 @@ my_debug (void *ctx, int level, const char *file, int line, const char *str)
 void
 mumble_mbedtls_network_connect (MumbleNetwork *self,
                                 const gchar *server_name,
-                                const gchar *server_port, GError **err)
+                                guint16 server_port, GError **err)
 {
   g_return_if_fail (self != NULL);
   g_return_if_fail (server_name != NULL);
-  g_return_if_fail (server_port != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
   MumbleMbedtlsNetwork *net = MUMBLE_MBEDTLS_NETWORK (self);
 
@@ -122,13 +121,16 @@ mumble_mbedtls_network_connect (MumbleNetwork *self,
       return;
     }
 
-  if ((ret = mbedtls_net_connect (&net->server_fd, server_name, server_port,
+  char* server_port_s = g_strdup_printf ("%d", server_port);
+  if ((ret = mbedtls_net_connect (&net->server_fd, server_name, server_port_s,
                                   MBEDTLS_NET_PROTO_TCP)) != 0)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
                    "mbedtls_net_connect returned %d (-0x%04x)", ret, -ret);
+      g_free (server_port_s);
       return;
     }
+  g_free (server_port_s);
 
   if ((ret = mbedtls_ssl_config_defaults (&net->conf, MBEDTLS_SSL_IS_CLIENT,
                                           MBEDTLS_SSL_TRANSPORT_STREAM,
