@@ -121,7 +121,7 @@ mumble_mbedtls_network_connect (MumbleNetwork *self,
       return;
     }
 
-  char* server_port_s = g_strdup_printf ("%d", server_port);
+  gchar *server_port_s = g_strdup_printf ("%d", server_port);
   if ((ret = mbedtls_net_connect (&net->server_fd, server_name, server_port_s,
                                   MBEDTLS_NET_PROTO_TCP)) != 0)
     {

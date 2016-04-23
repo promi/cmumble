@@ -180,8 +180,8 @@ main (void)
   // mbedtls_debug_set_threshold (2);
   GSettings *set = g_settings_new ("com.github.promi.cmumble");
   if (set == NULL)
-  {
-  }
+    {
+    }
   gchar *server_name = g_settings_get_string (set, "server-name");
   guint16 server_port = g_settings_get_int (set, "server-port");
   gchar *user_name = g_settings_get_string (set, "user-name");

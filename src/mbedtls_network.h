@@ -34,8 +34,7 @@ G_DECLARE_FINAL_TYPE (MumbleMbedtlsNetwork, mumble_mbedtls_network, MUMBLE,
 
      void mumble_mbedtls_network_connect (MumbleNetwork *net,
                                           const gchar *server_name,
-                                          guint16 server_port,
-                                          GError **err);
+                                          guint16 server_port, GError **err);
 
      void mumble_mbedtls_network_read_bytes (MumbleNetwork *net,
                                              guint8 *buffer,
