@@ -20,7 +20,8 @@ cmumble_SOURCES = \
 	indent.sh \
 	error.c \
 	mbedtls_network.c \
-	mbedtls_network.h
+	mbedtls_network.h \
+	com.github.promi.cmumble.gschema.xml
 
 cmumble_CFLAGS = -std=c11 \
 	-Wall \
@@ -30,4 +31,8 @@ cmumble_CFLAGS = -std=c11 \
 cmumble_LDFLAGS = 
 
 cmumble_LDADD = $(CMUMBLE_LIBS) -lmbedtls -lmbedcrypto -lmbedx509
+
+gsettings_SCHEMAS = com.github.promi.cmumble.gschema.xml
+
+@GSETTINGS_RULES@
 

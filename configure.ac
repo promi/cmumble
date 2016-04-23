@@ -25,9 +25,12 @@ AC_CHECK_LIB([mbedx509], [mbedtls_x509_crt_init], [ ], [
 	exit -1
 ])
 
-PKG_CHECK_MODULES(CMUMBLE, [glib-2.0 gobject-2.0 libprotobuf-c ])
+PKG_CHECK_MODULES(CMUMBLE, [glib-2.0 gobject-2.0 gio-2.0 libprotobuf-c ])
+
+GLIB_GSETTINGS
 
 AC_OUTPUT([
 	Makefile
 	src/Makefile
 ])
+
