@@ -20,18 +20,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mbedtls/debug.h>
-#include <gio/gio.h>
 
 #include "Mumble.pb-c.h"
 
+#include "application.h"
 #include "error.h"
 #include "utils.h"
 #include "packet_header.h"
 #include "network.h"
 #include "mbedtls_network.h"
 
+#define APPLICATION_ID "com.github.promi.cmumble"
+
 #define MUMBLE_PACKET_TYPE__VERSION 0
 #define MUMBLE_PACKET_TYPE__AUTHENTICATE 2
+#define MUMBLE_PACKET_TYPE__PING 3
 
 void
 send_our_version (MumbleNetwork *net, GError **err)
@@ -127,6 +130,48 @@ send_authenticate (MumbleNetwork *net, const gchar *username, GError **err)
 }
 
 void
+send_ping (MumbleNetwork *net, GError **err)
+{
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
+  ping.has_timestamp = 1;
+
+  MumblePacketHeader header = {
+    MUMBLE_PACKET_TYPE__PING,
+    mumble_proto__ping__get_packed_size (&ping)
+  };
+
+  GError *tmp_error = NULL;
+  mumble_network_write_packet_header (net, &header, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+
+  uint8_t *buffer = calloc (1, header.length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
+      return;
+    }
+
+  mumble_proto__ping__pack (&ping, buffer);
+
+  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      free (buffer);
+      return;
+    }
+  free (buffer);
+}
+
+void
 receive_packet (MumbleNetwork *net, GError **err)
 {
   MumblePacketHeader header;
@@ -174,11 +219,45 @@ receive_packet (MumbleNetwork *net, GError **err)
   free (buffer);
 }
 
-int
-main (void)
+gboolean
+mumble_timeout (G_GNUC_UNUSED gpointer user_data)
 {
+  printf ("PING\n");
+  MumbleNetwork *net = MUMBLE_NETWORK (user_data);
+  GError *err = NULL;
+  send_ping (net, &err);
+  if (err != NULL)
+    {
+      fprintf (stderr,
+               "could not send PING packet to the server: %s\n",
+               err->message);
+      return FALSE;
+    }
+  return TRUE;
+}
+
+gboolean
+mumble_timeout2 (G_GNUC_UNUSED gpointer user_data)
+{
+  MumbleNetwork *net = MUMBLE_NETWORK (user_data);
+  GError *err = NULL;
+  receive_packet (net, &err);
+  if (err != NULL)
+    {
+      fprintf (stderr,
+               "could not receive packet to the server: %s\n", err->message);
+      return FALSE;
+    }
+  return TRUE;
+}
+
+int
+main ()
+{
+  GMainLoop *loop = g_main_loop_new (NULL, FALSE);
+
   // mbedtls_debug_set_threshold (2);
-  GSettings *set = g_settings_new ("com.github.promi.cmumble");
+  GSettings *set = g_settings_new (APPLICATION_ID);
   if (set == NULL)
     {
     }
@@ -221,17 +300,9 @@ main (void)
   // Main loop
   // TODO: Send ping package, so that the server doesn't kick us ;)
   // Also probably better use select() instead of polling with read()
-  while (1)
-    {
-      receive_packet (net, &err);
-      if (err != NULL)
-        {
-          fprintf (stderr,
-                   "could not receive packet from to the server: %s\n",
-                   err->message);
-          goto fail_cleanup;
-        }
-    }
+  g_timeout_add_seconds (20, mumble_timeout, net);
+  g_timeout_add_seconds (1, mumble_timeout2, net);
+  g_main_loop_run (loop);
 
   int ret = 0;
   goto finally;

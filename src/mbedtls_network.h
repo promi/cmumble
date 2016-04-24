@@ -28,23 +28,23 @@
 
 G_BEGIN_DECLS
 #define MUMBLE_TYPE_MBEDTLS_NETWORK mumble_mbedtls_network_get_type ()
+/* *INDENT-OFF* */
 G_DECLARE_FINAL_TYPE (MumbleMbedtlsNetwork, mumble_mbedtls_network, MUMBLE,
                       MBEDTLS_NETWORK, MumbleNetwork)
-     MumbleMbedtlsNetwork *mumble_mbedtls_network_new ();
+/* *INDENT-ON* */
+MumbleMbedtlsNetwork *mumble_mbedtls_network_new ();
 
-     void mumble_mbedtls_network_connect (MumbleNetwork *net,
-                                          const gchar *server_name,
-                                          guint16 server_port, GError **err);
+void mumble_mbedtls_network_connect (MumbleNetwork *net,
+                                     const gchar *server_name,
+                                     guint16 server_port, GError **err);
 
-     void mumble_mbedtls_network_read_bytes (MumbleNetwork *net,
-                                             guint8 *buffer,
-                                             size_t buffer_length,
-                                             GError **err);
+void mumble_mbedtls_network_read_bytes (MumbleNetwork *net,
+                                        guint8 *buffer,
+                                        size_t buffer_length, GError **err);
 
-     void mumble_mbedtls_network_write_bytes (MumbleNetwork *net,
-                                              const guint8 *buffer,
-                                              size_t buffer_length,
-                                              GError **err);
+void mumble_mbedtls_network_write_bytes (MumbleNetwork *net,
+                                         const guint8 *buffer,
+                                         size_t buffer_length, GError **err);
 
 G_END_DECLS
 #endif // __NETWORK_H__

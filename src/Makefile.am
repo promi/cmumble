@@ -21,7 +21,9 @@ cmumble_SOURCES = \
 	error.c \
 	mbedtls_network.c \
 	mbedtls_network.h \
-	com.github.promi.cmumble.gschema.xml
+	com.github.promi.cmumble.gschema.xml \
+	application.c \
+	application.h
 
 cmumble_CFLAGS = -std=c11 \
 	-Wall \

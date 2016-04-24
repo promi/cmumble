@@ -1,4 +1,17 @@
 #!/bin/sh
-indent -T MumbleNetwork -T GError -T MumblePacketHeader -T gchar -T guint8 \
--T guint16 -T guint32 -T GObject -T GObjectClass -T MumbleNetworkClass \
--T MumbleMbedtlsNetwork -T MumbleMbedtlsNetworkClass -nut "$@"
+indent \
+-T gchar \
+-T guint16 \
+-T guint32 \
+-T guint8 \
+-T GApplication \
+-T GError \
+-T GObject \
+-T GObjectClass \
+-T MumbleApplication \
+-T MumbleMbedtlsNetwork \
+-T MumbleMbedtlsNetworkClass \
+-T MumbleNetwork \
+-T MumbleNetworkClass \
+-T MumblePacketHeader \
+-nut "$@"
