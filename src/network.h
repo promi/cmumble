@@ -26,6 +26,10 @@
 
 #include "packet_header.h"
 
+#define MUMBLE_PACKET_TYPE__VERSION 0
+#define MUMBLE_PACKET_TYPE__AUTHENTICATE 2
+#define MUMBLE_PACKET_TYPE__PING 3
+
 G_BEGIN_DECLS
 /* *INDENT-OFF* */
 #define MUMBLE_TYPE_NETWORK mumble_network_get_type ()
@@ -44,6 +48,8 @@ void mumble_network_read_bytes (MumbleNetwork *self, guint8 *buffer,
 void mumble_network_read_packet_header (MumbleNetwork *self,
                                         MumblePacketHeader
                                         *packet_header, GError **err);
+
+void mumble_network_read_packet_async (MumbleNetwork *self, GError **err);
 
 typedef size_t (*mumble_message_get_packed_size) (const gpointer message);
 typedef size_t (*mumble_message_pack) (const gpointer message, guint8 *out);

@@ -21,6 +21,8 @@
 #include <arpa/inet.h>
 #include <string.h>
 
+#include "Mumble.pb-c.h"
+
 #include "error.h"
 #include "network.h"
 
@@ -30,6 +32,7 @@ typedef struct _MumbleNetwork
 
   GSocketClient *socket_client;
   GSocketConnection *connection;
+  GTlsCertificate *certificate;
 } MumbleNetwork;
 
 /* *INDENT-OFF* */
@@ -53,9 +56,23 @@ mumble_network_class_init (MumbleNetworkClass *klass)
   gobject_class->finalize = mumble_network_finalize;
 }
 
+#define CERT_REL_FILENAME "/cmumble/cmumble.pem"
+
 static void
 mumble_network_init (MumbleNetwork *self)
 {
+  gchar *cert_filename = g_strconcat (g_get_user_config_dir (),
+                                      CERT_REL_FILENAME, NULL);
+  GError *err = NULL;
+  self->certificate = g_tls_certificate_new_from_file (cert_filename, &err);
+  if (err != NULL)
+    {
+      fprintf (stderr, "Certificate load error '%s': '%s'\n", cert_filename,
+               err->message);
+      g_error_free (err);
+    }
+  g_free (cert_filename);
+
   self->socket_client = g_socket_client_new ();
   g_socket_client_set_tls (self->socket_client, TRUE);
   g_signal_connect (self->socket_client, "event",
@@ -68,6 +85,7 @@ mumble_network_finalize (GObject *object)
   MumbleNetwork *self = MUMBLE_NETWORK (object);
   g_object_unref (self->connection);
   g_object_unref (self->socket_client);
+  g_object_unref (self->certificate);
 
   GObjectClass *parent_class = G_OBJECT_CLASS (mumble_network_parent_class);
   (*parent_class->finalize) (object);
@@ -89,10 +107,10 @@ mumble_network_accept_certificate (G_GNUC_UNUSED
                                    errors, G_GNUC_UNUSED gpointer user_data)
 {
   if (errors != 0)
-  {
-    // Ignore invalid certificates for now, but at least warn the user
-    printf ("WARNING: Server does not have a strong certificate\n");
-  }
+    {
+      // Ignore invalid certificates for now, but at least warn the user
+      printf ("WARNING: Server does not have a strong certificate\n");
+    }
   return TRUE;
 }
 
@@ -108,10 +126,16 @@ mumble_network_socket_event (G_GNUC_UNUSED GSocketClient
   if (event == G_SOCKET_CLIENT_TLS_HANDSHAKING)
     {
       GTlsClientConnection *tls_conn = G_TLS_CLIENT_CONNECTION (connection);
-      // g_tls_connection_set_certificate ();
+      GTlsConnection *tls_base_conn = G_TLS_CONNECTION (connection);
+      if (MUMBLE_NETWORK (user_data)->certificate != NULL)
+        {
+          g_tls_connection_set_certificate (tls_base_conn,
+                                            MUMBLE_NETWORK
+                                            (user_data)->certificate);
+        }
       g_signal_connect (tls_conn, "accept_certificate",
-                        G_CALLBACK
-                        (mumble_network_accept_certificate), user_data);
+                        G_CALLBACK (mumble_network_accept_certificate),
+                        user_data);
     }
 }
 
@@ -188,6 +212,107 @@ mumble_network_read_packet_header (MumbleNetwork *self,
   packet_header->type = ntohs (*(uint16_t *) buffer);
   packet_header->length = ntohl (*(uint32_t *) (buffer + 2));
   g_free (buffer);
+}
+
+typedef struct _ReadPacketData
+{
+  MumbleNetwork *net;
+  guint8 *buffer;
+  gsize buffer_length;
+} ReadPacketData;
+
+void
+mumble_network_read_packet_cb (GObject *source_object,
+                               GAsyncResult * res, gpointer user_data)
+{
+  GInputStream *istream = G_INPUT_STREAM (source_object);
+  GError *tmp_error = NULL;
+  ReadPacketData *rpd = user_data;
+  guint8 *header_buffer = rpd->buffer;
+  MumbleNetwork *self = rpd->net;
+  g_free (rpd);
+  gsize bytes_read;
+  if (g_input_stream_read_all_finish (istream, res, &bytes_read, &tmp_error)
+      == FALSE)
+    {
+      fprintf (stderr, "Error: %s\n", tmp_error->message);
+      return;
+    }
+  MumblePacketHeader header;
+  header.type = ntohs (*(uint16_t *) header_buffer);
+  header.length = ntohl (*(uint32_t *) (header_buffer + 2));
+  printf ("%d[%d] ", header.type, header.length);
+  fflush (stdout);
+  g_free (header_buffer);
+  if (header.length > 0)
+    {
+      guint8 *buffer = g_malloc0 (header.length);
+      if (buffer == NULL)
+        {
+          //g_set_error (err, MUMBLE_NETWORK_ERROR,
+          //             MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
+          fprintf (stderr, "Error: \n");
+          return;
+        }
+
+      mumble_network_read_bytes (self, buffer, header.length, &tmp_error);
+      if (tmp_error != NULL)
+        {
+          fprintf (stderr, "Error: %s\n", tmp_error->message);
+          //g_propagate_error (err, tmp_error);
+          g_free (buffer);
+          return;
+        }
+
+      if (header.type == MUMBLE_PACKET_TYPE__VERSION)
+        {
+          MumbleProto__Version *version =
+            mumble_proto__version__unpack (NULL, header.length, buffer);
+
+          printf ("version.has_version = %d\n", version->has_version);
+          printf ("version.version = %x\n", version->version);
+          printf ("version.release = %s\n", version->release);
+          printf ("version.os = %s\n", version->os);
+          printf ("version.os_version = %s\n", version->os_version);
+          mumble_proto__version__free_unpacked (version, NULL);
+        }
+
+      g_free (buffer);
+    }
+  mumble_network_read_packet_async (self, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      fprintf (stderr, "Error: %s\n", tmp_error->message);
+      return;
+    }
+}
+
+void
+mumble_network_read_packet_async (MumbleNetwork *self, GError **err)
+{
+  g_return_if_fail (self != NULL);
+
+  const size_t buffer_length = 6;
+  guint8 *buffer = g_malloc0 (buffer_length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_FAIL, "calloc failed");
+      return;
+    }
+
+  GIOStream *iostream = G_IO_STREAM (self->connection);
+
+  GInputStream *istream = g_io_stream_get_input_stream (iostream);
+
+  ReadPacketData *rpd = g_malloc0 (sizeof (ReadPacketData));
+  rpd->buffer = buffer;
+  rpd->buffer_length = buffer_length;
+  rpd->net = self;
+
+  g_input_stream_read_all_async (istream, buffer, buffer_length,
+                                 G_PRIORITY_DEFAULT, NULL,
+                                 mumble_network_read_packet_cb, rpd);
 }
 
 void

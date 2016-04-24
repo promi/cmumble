@@ -27,10 +27,6 @@
 
 #define APPLICATION_ID "com.github.promi.cmumble"
 
-#define MUMBLE_PACKET_TYPE__VERSION 0
-#define MUMBLE_PACKET_TYPE__AUTHENTICATE 2
-#define MUMBLE_PACKET_TYPE__PING 3
-
 #include "application.h"
 
 typedef struct _MumbleApplication
@@ -100,7 +96,7 @@ send_our_version (MumbleNetwork *net, GError **err)
   MumbleProto__Version message = MUMBLE_PROTO__VERSION__INIT;
   message.has_version = 1;
   message.version = 0x00010300;
-  message.release = "Git version";
+  message.release = "cmumble (git)";
   message.os = "Unknown";
   message.os_version = "Unknown";
 
@@ -143,7 +139,7 @@ send_ping (MumbleNetwork *net, GError **err)
   g_return_if_fail (err == NULL || *err == NULL);
 
   MumbleProto__Ping message = MUMBLE_PROTO__PING__INIT;
-  message.has_timestamp = 1;
+  // message.has_timestamp = 1;
 
   mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__PING,
                                (mumble_message_get_packed_size)
@@ -273,8 +269,16 @@ mumble_application_activate (GApplication *app)
       goto fail_cleanup;
     }
 
+  mumble_network_read_packet_async (self->net, &err);
+  if (err != NULL)
+    {
+      fprintf (stderr,
+               "Could not start reading from server : '%s'\n",
+               err->message);
+      goto fail_cleanup;
+    }
+
   g_timeout_add_seconds (20, mumble_timeout, self->net);
-  g_timeout_add (1, mumble_timeout2, self->net);
   g_application_hold (app);
   goto finally;
 
