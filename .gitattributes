@@ -1,0 +1,10 @@
+*.c text
+*.h text
+
+*.lo binary
+*.o binary
+
+*.so binary
+
+*.la binary
+*.a binary
