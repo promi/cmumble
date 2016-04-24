@@ -54,3 +54,4 @@
 .anjuta_sym_db.db
 cmumble.anjuta
 *~
+*.gschema.valid

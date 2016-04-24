@@ -30,7 +30,7 @@ cmumble_CFLAGS = -std=c11 \
 
 cmumble_LDFLAGS = 
 
-cmumble_LDADD = $(CMUMBLE_LIBS) -lmbedtls -lmbedcrypto -lmbedx509
+cmumble_LDADD = $(CMUMBLE_LIBS)
 
 gsettings_SCHEMAS = com.github.promi.cmumble.gschema.xml
 
