@@ -157,3 +157,43 @@ mumble_network_write_packet_header (MumbleNetwork *net,
 
   free (buffer);
 }
+
+void
+mumble_network_write_packet (MumbleNetwork *net, guint16 type,
+                             mumble_message_get_packed_size
+                             get_packed_size, mumble_message_pack pack,
+                             gpointer message, GError **err)
+{
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (get_packed_size != NULL);
+  g_return_if_fail (pack != NULL);
+  g_return_if_fail (message != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  MumblePacketHeader header = { type, get_packed_size (message) };
+
+  GError *tmp_error = NULL;
+  mumble_network_write_packet_header (net, &header, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+
+  guint8 *buffer = g_malloc0 (header.length);
+  if (buffer == NULL)
+    {
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "g_malloc failed");
+      return;
+    }
+
+  pack (message, buffer);
+
+  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+    }
+  g_free (buffer);
+}

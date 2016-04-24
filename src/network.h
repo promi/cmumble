@@ -66,6 +66,14 @@ void mumble_network_write_packet_header (MumbleNetwork *net,
                                          const MumblePacketHeader
                                          *packet_header, GError **err);
 
+typedef size_t (*mumble_message_get_packed_size) (const gpointer message);
+typedef size_t (*mumble_message_pack) (const gpointer message, guint8 *out);
+
+void mumble_network_write_packet (MumbleNetwork *net, guint16 type,
+                                  mumble_message_get_packed_size
+                                  get_packed_size, mumble_message_pack pack,
+                                  gpointer message, GError **err);
+
 G_END_DECLS
 #endif // __NETWORK_H__
 

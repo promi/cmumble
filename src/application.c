@@ -99,45 +99,18 @@ send_our_version (MumbleNetwork *net, GError **err)
   g_return_if_fail (net != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
 
-  MumbleProto__Version version = MUMBLE_PROTO__VERSION__INIT;
-  version.has_version = 1;
-  version.version = 0x00010300;
-  version.release = "Git version";
-  version.os = "Unknown";
-  version.os_version = "Unknown";
-  mumble_network_write_packet (MUMBLE_PACKET_TYPE__VERSION, 
-                               mumble_proto__version__get_packed_size, 
-                               mumble_proto__version__pack, version,
-                               tmp_err);
+  MumbleProto__Version message = MUMBLE_PROTO__VERSION__INIT;
+  message.has_version = 1;
+  message.version = 0x00010300;
+  message.release = "Git version";
+  message.os = "Unknown";
+  message.os_version = "Unknown";
 
-  MumblePacketHeader header = {
-    MUMBLE_PACKET_TYPE__VERSION,
-    mumble_proto__version__get_packed_size (&version)
-  };
-
-  GError *tmp_error = NULL;
-  mumble_network_write_packet_header (net, &header, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-      return;
-    }
-
-  guint8 *buffer = g_malloc0 (header.length);
-  if (buffer == NULL)
-    {
-      g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
-      return;
-    }
-
-  mumble_proto__version__pack (&version, buffer);
-  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-    }
-  g_free (buffer);
+  mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__VERSION,
+                               (mumble_message_get_packed_size)
+                               mumble_proto__version__get_packed_size,
+                               (mumble_message_pack)
+                               mumble_proto__version__pack, &message, err);
 }
 
 void
@@ -147,47 +120,22 @@ send_authenticate (MumbleNetwork *net, const gchar *username, GError **err)
   g_return_if_fail (username != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
 
-  MumbleProto__Authenticate authenticate = MUMBLE_PROTO__AUTHENTICATE__INIT;
-  authenticate.username = (gchar *) username;
-  authenticate.password = "";
-  authenticate.n_tokens = 0;
-  authenticate.tokens = NULL;
-  authenticate.n_celt_versions = 0;
-  authenticate.celt_versions = NULL;
-  authenticate.has_opus = 1;
-  authenticate.opus = 1;
+  MumbleProto__Authenticate message = MUMBLE_PROTO__AUTHENTICATE__INIT;
+  message.username = (gchar *) username;
+  message.password = "";
+  message.n_tokens = 0;
+  message.tokens = NULL;
+  message.n_celt_versions = 0;
+  message.celt_versions = NULL;
+  message.has_opus = 1;
+  message.opus = 1;
 
-  MumblePacketHeader header = {
-    MUMBLE_PACKET_TYPE__AUTHENTICATE,
-    mumble_proto__authenticate__get_packed_size (&authenticate)
-  };
-
-  GError *tmp_error = NULL;
-  mumble_network_write_packet_header (net, &header, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-      return;
-    }
-
-  guint8 *buffer = g_malloc0 (header.length);
-  if (buffer == NULL)
-    {
-      g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
-      return;
-    }
-
-  mumble_proto__authenticate__pack (&authenticate, buffer);
-
-  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-      g_free (buffer);
-      return;
-    }
-  g_free (buffer);
+  mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__AUTHENTICATE,
+                               (mumble_message_get_packed_size)
+                               mumble_proto__authenticate__get_packed_size,
+                               (mumble_message_pack)
+                               mumble_proto__authenticate__pack, &message,
+                               err);
 }
 
 void
@@ -196,40 +144,14 @@ send_ping (MumbleNetwork *net, GError **err)
   g_return_if_fail (net != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
 
-  MumbleProto__Ping ping = MUMBLE_PROTO__PING__INIT;
-  ping.has_timestamp = 1;
+  MumbleProto__Ping message = MUMBLE_PROTO__PING__INIT;
+  message.has_timestamp = 1;
 
-  MumblePacketHeader header = {
-    MUMBLE_PACKET_TYPE__PING,
-    mumble_proto__ping__get_packed_size (&ping)
-  };
-
-  GError *tmp_error = NULL;
-  mumble_network_write_packet_header (net, &header, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-      return;
-    }
-
-  guint8 *buffer = g_malloc0 (header.length);
-  if (buffer == NULL)
-    {
-      g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
-      return;
-    }
-
-  mumble_proto__ping__pack (&ping, buffer);
-
-  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-      g_free (buffer);
-      return;
-    }
-  g_free (buffer);
+  mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__PING,
+                               (mumble_message_get_packed_size)
+                               mumble_proto__ping__get_packed_size,
+                               (mumble_message_pack)
+                               mumble_proto__ping__pack, &message, err);
 }
 
 void
@@ -244,9 +166,8 @@ receive_packet (MumbleNetwork *net, GError **err)
       return;
     }
 
-  printf ("message type = %d\n", header.type);
-  printf ("message length = %d\n", header.length);
-  fflush (stdout);
+  // printf ("%d[%d] ", header.type, header.length);
+  // fflush (stdout);
 
   guint8 *buffer = g_malloc0 (header.length);
   if (buffer == NULL)
