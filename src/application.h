@@ -20,6 +20,8 @@
 #ifndef __APPLICATION_H__
 #define __APPLICATION_H__
 
+#include <glib.h>
+#include <glib-object.h>
 #include <gio/gio.h>
 
 G_BEGIN_DECLS

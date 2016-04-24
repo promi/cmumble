@@ -31,7 +31,7 @@ G_DECLARE_DERIVABLE_TYPE (MumbleNetwork, mumble_network, MUMBLE, NETWORK,
                           GObject)
 /* *INDENT-ON* */
 
-/*  typedef struct _MumbleNetworkClass
+typedef struct _MumbleNetworkClass
 {
   GObjectClass parent_class;
 

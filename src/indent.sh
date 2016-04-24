@@ -5,10 +5,12 @@ indent \
 -T guint32 \
 -T guint8 \
 -T GApplication \
+-T GApplicationClass \
 -T GError \
 -T GObject \
 -T GObjectClass \
 -T MumbleApplication \
+-T MumbleApplicationClass \
 -T MumbleMbedtlsNetwork \
 -T MumbleMbedtlsNetworkClass \
 -T MumbleNetwork \
