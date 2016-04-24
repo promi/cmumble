@@ -18,8 +18,6 @@ indent \
 -T GTlsConnection \
 -T MumbleApplication \
 -T MumbleApplicationClass \
--T MumbleMbedtlsNetwork \
--T MumbleMbedtlsNetworkClass \
 -T MumbleNetwork \
 -T MumbleNetworkClass \
 -T MumblePacketHeader \

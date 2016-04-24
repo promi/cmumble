@@ -17,13 +17,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <stdio.h>
 #include <arpa/inet.h>
 #include <string.h>
-#include <mbedtls/net.h>
-#include <mbedtls/ssl.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/debug.h>
 
 #include "error.h"
 #include "network.h"
@@ -92,6 +88,11 @@ mumble_network_accept_certificate (G_GNUC_UNUSED
                                    GTlsCertificateFlags
                                    errors, G_GNUC_UNUSED gpointer user_data)
 {
+  if (errors != 0)
+  {
+    // Ignore invalid certificates for now, but at least warn the user
+    printf ("WARNING: Server does not have a strong certificate\n");
+  }
   return TRUE;
 }
 
@@ -167,7 +168,7 @@ mumble_network_read_packet_header (MumbleNetwork *self,
   g_return_if_fail (packet_header != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
   const size_t buffer_length = 6;
-  guint8 *buffer = calloc (1, buffer_length);
+  guint8 *buffer = g_malloc0 (buffer_length);
   if (buffer == NULL)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR,
@@ -180,13 +181,13 @@ mumble_network_read_packet_header (MumbleNetwork *self,
   if (tmp_error != NULL)
     {
       g_propagate_error (err, tmp_error);
-      free (buffer);
+      g_free (buffer);
       return;
     }
 
   packet_header->type = ntohs (*(uint16_t *) buffer);
   packet_header->length = ntohl (*(uint32_t *) (buffer + 2));
-  free (buffer);
+  g_free (buffer);
 }
 
 void
@@ -198,7 +199,7 @@ mumble_network_write_packet_header (MumbleNetwork *self,
   g_return_if_fail (packet_header != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
   const int buffer_length = 6;
-  uint8_t *buffer = calloc (1, buffer_length);
+  guint8 *buffer = g_malloc0 (buffer_length);
   if (buffer == NULL)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR,
@@ -216,7 +217,7 @@ mumble_network_write_packet_header (MumbleNetwork *self,
       g_propagate_error (err, tmp_error);
     }
 
-  free (buffer);
+  g_free (buffer);
 }
 
 void
