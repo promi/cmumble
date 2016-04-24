@@ -7,8 +7,15 @@ indent \
 -T GApplication \
 -T GApplicationClass \
 -T GError \
+-T GIOStream \
+-T GNetworkAddress \
 -T GObject \
 -T GObjectClass \
+-T GSocketClient \
+-T GSocketClientEvent \
+-T GSocketConnectable \
+-T GTlsCertificate \
+-T GTlsConnection \
 -T MumbleApplication \
 -T MumbleApplicationClass \
 -T MumbleMbedtlsNetwork \

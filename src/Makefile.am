@@ -19,8 +19,6 @@ cmumble_SOURCES = \
 	error.h \
 	indent.sh \
 	error.c \
-	mbedtls_network.c \
-	mbedtls_network.h \
 	com.github.promi.cmumble.gschema.xml \
 	application.c \
 	application.h

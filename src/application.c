@@ -24,8 +24,6 @@
 #include "error.h"
 #include "packet_header.h"
 #include "network.h"
-#include "mbedtls_network.h"
-
 
 #define APPLICATION_ID "com.github.promi.cmumble"
 
@@ -69,7 +67,7 @@ mumble_application_init (MumbleApplication *self)
   g_return_if_fail (self->loop != NULL);
   self->set = g_settings_new (APPLICATION_ID);
   g_return_if_fail (self->set != NULL);
-  self->net = MUMBLE_NETWORK (mumble_mbedtls_network_new ());
+  self->net = mumble_network_new ();
   g_return_if_fail (self->net != NULL);
 }
 
@@ -169,36 +167,42 @@ receive_packet (MumbleNetwork *net, GError **err)
   // printf ("%d[%d] ", header.type, header.length);
   // fflush (stdout);
 
-  guint8 *buffer = g_malloc0 (header.length);
-  if (buffer == NULL)
+  // Payload could be empty (i.e. PING message without any actual data filled)
+  // That's not an error, only just don't try to receive any payload in that
+  // case
+  if (header.length > 0)
     {
-      g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
-      return;
-    }
+      guint8 *buffer = g_malloc0 (header.length);
+      if (buffer == NULL)
+        {
+          g_set_error (err, MUMBLE_NETWORK_ERROR,
+                       MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
+          return;
+        }
 
-  mumble_network_read_bytes (net, buffer, header.length, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
+      mumble_network_read_bytes (net, buffer, header.length, &tmp_error);
+      if (tmp_error != NULL)
+        {
+          g_propagate_error (err, tmp_error);
+          g_free (buffer);
+          return;
+        }
+
+      if (header.type == MUMBLE_PACKET_TYPE__VERSION)
+        {
+          MumbleProto__Version *version =
+            mumble_proto__version__unpack (NULL, header.length, buffer);
+
+          printf ("version.has_version = %d\n", version->has_version);
+          printf ("version.version = %x\n", version->version);
+          printf ("version.release = %s\n", version->release);
+          printf ("version.os = %s\n", version->os);
+          printf ("version.os_version = %s\n", version->os_version);
+          mumble_proto__version__free_unpacked (version, NULL);
+        }
+
       g_free (buffer);
-      return;
     }
-
-  if (header.type == MUMBLE_PACKET_TYPE__VERSION)
-    {
-      MumbleProto__Version *version =
-        mumble_proto__version__unpack (NULL, header.length, buffer);
-
-      printf ("version.has_version = %d\n", version->has_version);
-      printf ("version.version = %x\n", version->version);
-      printf ("version.release = %s\n", version->release);
-      printf ("version.os = %s\n", version->os);
-      printf ("version.os_version = %s\n", version->os_version);
-      mumble_proto__version__free_unpacked (version, NULL);
-    }
-
-  g_free (buffer);
 }
 
 gboolean
@@ -227,7 +231,8 @@ mumble_timeout2 (gpointer user_data)
   if (err != NULL)
     {
       fprintf (stderr,
-               "could not receive packet to the server: %s\n", err->message);
+               "could not receive packet from the server: %s\n",
+               err->message);
       return FALSE;
     }
   return TRUE;
@@ -236,7 +241,6 @@ mumble_timeout2 (gpointer user_data)
 void
 mumble_application_activate (GApplication *app)
 {
-  printf ("Activate\n");
   MumbleApplication *self = MUMBLE_APPLICATION (app);
 
   gchar *server_name = g_settings_get_string (self->set, "server-name");
@@ -247,14 +251,15 @@ mumble_application_activate (GApplication *app)
   mumble_network_connect (self->net, server_name, server_port, &err);
   if (err != NULL)
     {
-      fprintf (stderr, "could not connect to the server: %s\n", err->message);
+      fprintf (stderr, "Could not connect to the server '%s:%d': '%s'\n",
+               server_name, server_port, err->message);
       goto fail_cleanup;
     }
 
   send_our_version (self->net, &err);
   if (err != NULL)
     {
-      fprintf (stderr, "could not send our version to the server: %s\n",
+      fprintf (stderr, "Could not send our version to the server: '%s'\n",
                err->message);
       goto fail_cleanup;
     }
@@ -262,7 +267,8 @@ mumble_application_activate (GApplication *app)
   send_authenticate (self->net, user_name, &err);
   if (err != NULL)
     {
-      fprintf (stderr, "could not send authenticate to the server: %s\n",
+      fprintf (stderr,
+               "Could not send authenticate to the server : '%s'\n",
                err->message);
       goto fail_cleanup;
     }

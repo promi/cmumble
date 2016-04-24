@@ -28,12 +28,24 @@
 #include "error.h"
 #include "network.h"
 
+typedef struct _MumbleNetwork
+{
+  GObject parent;
+
+  GSocketClient *socket_client;
+  GSocketConnection *connection;
+} MumbleNetwork;
 
 /* *INDENT-OFF* */
 G_DEFINE_TYPE (MumbleNetwork, mumble_network, G_TYPE_OBJECT)
 /* *INDENT-ON* */
 
 static const char pers[] = "cmumble";
+
+void mumble_network_socket_event (GSocketClient *client,
+                                  GSocketClientEvent event,
+                                  GSocketConnectable *connectable,
+                                  GIOStream *connection, gpointer user_data);
 
 static void mumble_network_finalize (GObject *object);
 
@@ -46,73 +58,125 @@ mumble_network_class_init (MumbleNetworkClass *klass)
 }
 
 static void
-mumble_network_init (G_GNUC_UNUSED MumbleNetwork *net)
+mumble_network_init (MumbleNetwork *self)
 {
-
+  self->socket_client = g_socket_client_new ();
+  g_socket_client_set_tls (self->socket_client, TRUE);
+  g_signal_connect (self->socket_client, "event",
+                    G_CALLBACK (mumble_network_socket_event), self);
 }
 
 static void
 mumble_network_finalize (GObject *object)
 {
+  MumbleNetwork *self = MUMBLE_NETWORK (object);
+  g_object_unref (self->connection);
+  g_object_unref (self->socket_client);
+
   GObjectClass *parent_class = G_OBJECT_CLASS (mumble_network_parent_class);
   (*parent_class->finalize) (object);
 }
 
-/*
 MumbleNetwork *
 mumble_network_new (void)
 {
   return g_object_new (MUMBLE_TYPE_NETWORK, NULL);
 }
-*/
+
+gboolean
+mumble_network_accept_certificate (G_GNUC_UNUSED
+                                   GTlsConnection *conn,
+                                   G_GNUC_UNUSED
+                                   GTlsCertificate *peer_cert,
+                                   G_GNUC_UNUSED
+                                   GTlsCertificateFlags
+                                   errors, G_GNUC_UNUSED gpointer user_data)
+{
+  return TRUE;
+}
 
 void
-mumble_network_connect (MumbleNetwork *net, const gchar *server_name,
+mumble_network_socket_event (G_GNUC_UNUSED GSocketClient
+                             *client,
+                             GSocketClientEvent event,
+                             G_GNUC_UNUSED
+                             GSocketConnectable
+                             *connectable,
+                             GIOStream *connection, gpointer user_data)
+{
+  if (event == G_SOCKET_CLIENT_TLS_HANDSHAKING)
+    {
+      GTlsClientConnection *tls_conn = G_TLS_CLIENT_CONNECTION (connection);
+      // g_tls_connection_set_certificate ();
+      g_signal_connect (tls_conn, "accept_certificate",
+                        G_CALLBACK
+                        (mumble_network_accept_certificate), user_data);
+    }
+}
+
+void
+mumble_network_connect (MumbleNetwork *self,
+                        const gchar *server_name,
                         guint16 server_port, GError **err)
 {
-  MumbleNetworkClass *klass;
-  klass = MUMBLE_NETWORK_GET_CLASS (net);
-  klass->connect (net, server_name, server_port, err);
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+  GSocketConnectable *address =
+    g_network_address_new (server_name, server_port);
+  self->connection =
+    g_socket_client_connect (self->socket_client, address, NULL, err);
+  g_object_unref (address);
 }
 
 void
-mumble_network_read_bytes (MumbleNetwork *net, guint8 *buffer,
-                           size_t length, GError **err)
+mumble_network_read_bytes (MumbleNetwork *self,
+                           guint8 *buffer, size_t length, GError **err)
 {
-  MumbleNetworkClass *klass;
-  klass = MUMBLE_NETWORK_GET_CLASS (net);
-  klass->read_bytes (net, buffer, length, err);
-}
-
-void
-mumble_network_write_bytes (MumbleNetwork *net, const guint8 *buffer,
-                            size_t length, GError **err)
-{
-  MumbleNetworkClass *klass;
-  klass = MUMBLE_NETWORK_GET_CLASS (net);
-  klass->write_bytes (net, buffer, length, err);
-}
-
-void
-mumble_network_read_packet_header (MumbleNetwork *net,
-                                   MumblePacketHeader *packet_header,
-                                   GError **err)
-{
-  g_return_if_fail (net != NULL);
-  g_return_if_fail (packet_header != NULL);
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (buffer != NULL);
+  g_return_if_fail (length > 0);
   g_return_if_fail (err == NULL || *err == NULL);
 
+  GIOStream *iostream = G_IO_STREAM (self->connection);
+
+  GInputStream *istream = g_io_stream_get_input_stream (iostream);
+  g_input_stream_read_all (istream, buffer, length, NULL, NULL, err);
+}
+
+void
+mumble_network_write_bytes (MumbleNetwork *self,
+                            const guint8 *buffer, size_t length, GError **err)
+{
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (buffer != NULL);
+  g_return_if_fail (length > 0);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  GIOStream *iostream = G_IO_STREAM (self->connection);
+
+  GOutputStream *ostream = g_io_stream_get_output_stream (iostream);
+  g_output_stream_write_all (ostream, buffer, length, NULL, NULL, err);
+}
+
+void
+mumble_network_read_packet_header (MumbleNetwork *self,
+                                   MumblePacketHeader
+                                   *packet_header, GError **err)
+{
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (packet_header != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
   const size_t buffer_length = 6;
   guint8 *buffer = calloc (1, buffer_length);
   if (buffer == NULL)
     {
-      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                   "calloc failed");
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_FAIL, "calloc failed");
       return;
     }
 
   GError *tmp_error = NULL;
-  mumble_network_read_bytes (net, buffer, buffer_length, &tmp_error);
+  mumble_network_read_bytes (self, buffer, buffer_length, &tmp_error);
   if (tmp_error != NULL)
     {
       g_propagate_error (err, tmp_error);
@@ -122,34 +186,31 @@ mumble_network_read_packet_header (MumbleNetwork *net,
 
   packet_header->type = ntohs (*(uint16_t *) buffer);
   packet_header->length = ntohl (*(uint32_t *) (buffer + 2));
-
   free (buffer);
 }
 
 void
-mumble_network_write_packet_header (MumbleNetwork *net,
-                                    const MumblePacketHeader *packet_header,
-                                    GError **err)
+mumble_network_write_packet_header (MumbleNetwork *self,
+                                    const MumblePacketHeader
+                                    *packet_header, GError **err)
 {
-  g_return_if_fail (net != NULL);
+  g_return_if_fail (self != NULL);
   g_return_if_fail (packet_header != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
-
   const int buffer_length = 6;
   uint8_t *buffer = calloc (1, buffer_length);
   if (buffer == NULL)
     {
-      g_set_error (err, MUMBLE_NETWORK_ERROR, MUMBLE_NETWORK_ERROR_FAIL,
-                   "calloc failed");
+      g_set_error (err, MUMBLE_NETWORK_ERROR,
+                   MUMBLE_NETWORK_ERROR_FAIL, "calloc failed");
       return;
     }
 
   *(uint16_t *) buffer = htons (packet_header->type);
   *(uint32_t *) (buffer + 2) = htonl (packet_header->length);
-
   GError *tmp_error = NULL;
-  mumble_network_write_bytes (net, (const guint8 *) buffer, buffer_length,
-                              &tmp_error);
+  mumble_network_write_bytes (self, (const guint8 *) buffer,
+                              buffer_length, &tmp_error);
   if (tmp_error != NULL)
     {
       g_propagate_error (err, tmp_error);
@@ -159,41 +220,48 @@ mumble_network_write_packet_header (MumbleNetwork *net,
 }
 
 void
-mumble_network_write_packet (MumbleNetwork *net, guint16 type,
+mumble_network_write_packet (MumbleNetwork *self,
+                             guint16 type,
                              mumble_message_get_packed_size
-                             get_packed_size, mumble_message_pack pack,
+                             get_packed_size,
+                             mumble_message_pack pack,
                              gpointer message, GError **err)
 {
-  g_return_if_fail (net != NULL);
+  g_return_if_fail (self != NULL);
   g_return_if_fail (get_packed_size != NULL);
   g_return_if_fail (pack != NULL);
   g_return_if_fail (message != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
-
-  MumblePacketHeader header = { type, get_packed_size (message) };
-
+  MumblePacketHeader header = {
+    type, get_packed_size (message)
+  };
   GError *tmp_error = NULL;
-  mumble_network_write_packet_header (net, &header, &tmp_error);
+  mumble_network_write_packet_header (self, &header, &tmp_error);
   if (tmp_error != NULL)
     {
       g_propagate_error (err, tmp_error);
       return;
     }
 
-  guint8 *buffer = g_malloc0 (header.length);
-  if (buffer == NULL)
+  // Payload could be empty (i.e. PING message without any actual data filled)
+  // That's not an error, only just send the header and no payload in that case
+  if (header.length > 0)
     {
-      g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "g_malloc failed");
-      return;
-    }
+      guint8 *buffer = g_malloc0 (header.length);
+      if (buffer == NULL)
+        {
+          g_set_error (err, MUMBLE_NETWORK_ERROR,
+                       MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL,
+                       "g_malloc failed");
+          return;
+        }
 
-  pack (message, buffer);
-
-  mumble_network_write_bytes (net, buffer, header.length, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
+      pack (message, buffer);
+      mumble_network_write_bytes (self, buffer, header.length, &tmp_error);
+      if (tmp_error != NULL)
+        {
+          g_propagate_error (err, tmp_error);
+        }
+      g_free (buffer);
     }
-  g_free (buffer);
 }
