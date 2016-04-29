@@ -40,7 +40,8 @@ MumbleNetwork *mumble_network_new ();
 
 void mumble_network_connect (MumbleNetwork *self,
                              const gchar *server_name,
-                             guint16 server_port, GError **err);
+                             guint16 server_port, GTlsCertificate *certificate,
+                             GError **err);
 
 void mumble_network_read_bytes (MumbleNetwork *self, guint8 *buffer,
                                 size_t buffer_length, GError **err);

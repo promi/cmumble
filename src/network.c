@@ -56,23 +56,9 @@ mumble_network_class_init (MumbleNetworkClass *klass)
   gobject_class->finalize = mumble_network_finalize;
 }
 
-#define CERT_REL_FILENAME "/cmumble/cmumble.pem"
-
 static void
 mumble_network_init (MumbleNetwork *self)
 {
-  gchar *cert_filename = g_strconcat (g_get_user_config_dir (),
-                                      CERT_REL_FILENAME, NULL);
-  GError *err = NULL;
-  self->certificate = g_tls_certificate_new_from_file (cert_filename, &err);
-  if (err != NULL)
-    {
-      fprintf (stderr, "Certificate load error '%s': '%s'\n", cert_filename,
-               err->message);
-      g_error_free (err);
-    }
-  g_free (cert_filename);
-
   self->socket_client = g_socket_client_new ();
   g_socket_client_set_tls (self->socket_client, TRUE);
   g_signal_connect (self->socket_client, "event",
@@ -142,12 +128,14 @@ mumble_network_socket_event (G_GNUC_UNUSED GSocketClient
 void
 mumble_network_connect (MumbleNetwork *self,
                         const gchar *server_name,
-                        guint16 server_port, GError **err)
+                        guint16 server_port, GTlsCertificate *certificate,
+                        GError **err)
 {
   g_return_if_fail (self != NULL);
   g_return_if_fail (err == NULL || *err == NULL);
   GSocketConnectable *address =
     g_network_address_new (server_name, server_port);
+  self->certificate = certificate;
   self->connection =
     g_socket_client_connect (self->socket_client, address, NULL, err);
   g_object_unref (address);
@@ -196,7 +184,7 @@ mumble_network_read_packet_header (MumbleNetwork *self,
   if (buffer == NULL)
     {
       g_set_error (err, MUMBLE_NETWORK_ERROR,
-                   MUMBLE_NETWORK_ERROR_FAIL, "calloc failed");
+                   MUMBLE_NETWORK_ERROR_FAIL, "g_malloc failed");
       return;
     }
 

@@ -243,8 +243,22 @@ mumble_application_activate (GApplication *app)
   guint16 server_port = g_settings_get_int (self->set, "server-port");
   gchar *user_name = g_settings_get_string (self->set, "user-name");
 
+  gchar *cert_filename = g_strconcat (g_get_user_config_dir (),
+                                      "/cmumble/cmumble.pem", NULL);
   GError *err = NULL;
-  mumble_network_connect (self->net, server_name, server_port, &err);
+  GTlsCertificate *certificate =
+    g_tls_certificate_new_from_file (cert_filename,
+                                     &err);
+  if (err != NULL)
+    {
+      g_return_if_fail (certificate == NULL);
+      fprintf (stderr, "Certificate load error: '%s'\n", err->message);
+      g_clear_error (&err);
+    }
+  g_free (cert_filename);
+
+  mumble_network_connect (self->net, server_name, server_port, certificate,
+                          &err);
   if (err != NULL)
     {
       fprintf (stderr, "Could not connect to the server '%s:%d': '%s'\n",
@@ -273,8 +287,7 @@ mumble_application_activate (GApplication *app)
   if (err != NULL)
     {
       fprintf (stderr,
-               "Could not start reading from server : '%s'\n",
-               err->message);
+               "Could not start reading from server : '%s'\n", err->message);
       goto fail_cleanup;
     }
 
