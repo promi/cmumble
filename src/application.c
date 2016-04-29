@@ -100,7 +100,7 @@ send_our_version (MumbleNetwork *net, GError **err)
   message.os = "Unknown";
   message.os_version = "Unknown";
 
-  mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__VERSION,
+  mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__VERSION,
                                (mumble_message_get_packed_size)
                                mumble_proto__version__get_packed_size,
                                (mumble_message_pack)
@@ -124,7 +124,7 @@ send_authenticate (MumbleNetwork *net, const gchar *username, GError **err)
   message.has_opus = 1;
   message.opus = 1;
 
-  mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__AUTHENTICATE,
+  mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__AUTHENTICATE,
                                (mumble_message_get_packed_size)
                                mumble_proto__authenticate__get_packed_size,
                                (mumble_message_pack)
@@ -141,64 +141,66 @@ send_ping (MumbleNetwork *net, GError **err)
   MumbleProto__Ping message = MUMBLE_PROTO__PING__INIT;
   // message.has_timestamp = 1;
 
-  mumble_network_write_packet (net, MUMBLE_PACKET_TYPE__PING,
+  mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__PING,
                                (mumble_message_get_packed_size)
                                mumble_proto__ping__get_packed_size,
                                (mumble_message_pack)
                                mumble_proto__ping__pack, &message, err);
 }
 
-void
-receive_packet (MumbleNetwork *net, GError **err)
+gboolean
+read_message (MumbleNetwork *net, MumbleMessageType type, guint8 *data,
+              guint32 length)
 {
-  MumblePacketHeader header;
-  GError *tmp_error = NULL;
-  mumble_network_read_packet_header (net, &header, &tmp_error);
-  if (tmp_error != NULL)
-    {
-      g_propagate_error (err, tmp_error);
-      return;
-    }
-
-  // printf ("%d[%d] ", header.type, header.length);
-  // fflush (stdout);
-
+  g_return_val_if_fail (net != NULL, FALSE);
   // Payload could be empty (i.e. PING message without any actual data filled)
-  // That's not an error, only just don't try to receive any payload in that
-  // case
-  if (header.length > 0)
+  // That's not an error
+  if (data == NULL)
     {
-      guint8 *buffer = g_malloc0 (header.length);
-      if (buffer == NULL)
-        {
-          g_set_error (err, MUMBLE_NETWORK_ERROR,
-                       MUMBLE_NETWORK_ERROR_ALLOCATION_FAIL, "calloc failed");
-          return;
-        }
-
-      mumble_network_read_bytes (net, buffer, header.length, &tmp_error);
-      if (tmp_error != NULL)
-        {
-          g_propagate_error (err, tmp_error);
-          g_free (buffer);
-          return;
-        }
-
-      if (header.type == MUMBLE_PACKET_TYPE__VERSION)
-        {
-          MumbleProto__Version *version =
-            mumble_proto__version__unpack (NULL, header.length, buffer);
-
-          printf ("version.has_version = %d\n", version->has_version);
-          printf ("version.version = %x\n", version->version);
-          printf ("version.release = %s\n", version->release);
-          printf ("version.os = %s\n", version->os);
-          printf ("version.os_version = %s\n", version->os_version);
-          mumble_proto__version__free_unpacked (version, NULL);
-        }
-
-      g_free (buffer);
+      return TRUE;
     }
+
+  if (type == MUMBLE_MESSAGE_TYPE__VERSION)
+    {
+      MumbleProto__Version *message =
+        mumble_proto__version__unpack (NULL, length, data);
+      printf ("\nreceived version message\n");
+      if (message->has_version == 1)
+        {
+          printf ("version = %x\n", message->version);
+        }
+      printf ("release = %s\n", message->release);
+      printf ("os = %s\n", message->os);
+      printf ("os_version = %s\n", message->os_version);
+      printf ("\n");
+      mumble_proto__version__free_unpacked (message, NULL);
+    }
+  else if (type == MUMBLE_MESSAGE_TYPE__UDP_TUNNEL)
+    {
+      printf ("%d[%d] ", type, length);
+    }
+  else if (type == MUMBLE_MESSAGE_TYPE__REJECT)
+    {
+      MumbleProto__Reject *message =
+        mumble_proto__reject__unpack (NULL, length, data);
+      printf ("\nreceived reject message\n");
+      if (message->has_type == 1)
+        {
+          printf ("type = %d\n", message->type);
+        }
+      printf ("reason = %s\n", message->reason);
+      printf ("\n");
+      mumble_proto__reject__free_unpacked (message, NULL);
+      g_free (data);
+      return FALSE;
+    }
+  else
+    {
+      printf ("%d[%d] ", type, length);
+    }
+
+  g_free (data);
+  return TRUE;
 }
 
 gboolean
@@ -212,22 +214,6 @@ mumble_timeout (gpointer user_data)
     {
       fprintf (stderr,
                "could not send PING packet to the server: %s\n",
-               err->message);
-      return FALSE;
-    }
-  return TRUE;
-}
-
-gboolean
-mumble_timeout2 (gpointer user_data)
-{
-  MumbleNetwork *net = MUMBLE_NETWORK (user_data);
-  GError *err = NULL;
-  receive_packet (net, &err);
-  if (err != NULL)
-    {
-      fprintf (stderr,
-               "could not receive packet from the server: %s\n",
                err->message);
       return FALSE;
     }
@@ -283,7 +269,7 @@ mumble_application_activate (GApplication *app)
       goto fail_cleanup;
     }
 
-  mumble_network_read_packet_async (self->net, &err);
+  mumble_network_read_packet_async (self->net, &read_message, &err);
   if (err != NULL)
     {
       fprintf (stderr,

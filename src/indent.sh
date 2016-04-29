@@ -6,6 +6,7 @@ indent \
 -T guint8 \
 -T GApplication \
 -T GApplicationClass \
+-T GAsyncResult \
 -T GError \
 -T GIOStream \
 -T GNetworkAddress \

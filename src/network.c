@@ -33,6 +33,8 @@ typedef struct _MumbleNetwork
   GSocketClient *socket_client;
   GSocketConnection *connection;
   GTlsCertificate *certificate;
+  mumble_read_callback read_cb;
+
 } MumbleNetwork;
 
 /* *INDENT-OFF* */
@@ -226,15 +228,14 @@ mumble_network_read_packet_cb (GObject *source_object,
       fprintf (stderr, "Error: %s\n", tmp_error->message);
       return;
     }
-  MumblePacketHeader header;
-  header.type = ntohs (*(uint16_t *) header_buffer);
-  header.length = ntohl (*(uint32_t *) (header_buffer + 2));
-  printf ("%d[%d] ", header.type, header.length);
+  MumbleMessageType type = ntohs (*(uint16_t *) header_buffer);
+  guint32 length = ntohl (*(uint32_t *) (header_buffer + 2));
   fflush (stdout);
   g_free (header_buffer);
-  if (header.length > 0)
+  guint8 *buffer = NULL;
+  if (length > 0)
     {
-      guint8 *buffer = g_malloc0 (header.length);
+      buffer = g_malloc0 (length);
       if (buffer == NULL)
         {
           //g_set_error (err, MUMBLE_NETWORK_ERROR,
@@ -243,7 +244,7 @@ mumble_network_read_packet_cb (GObject *source_object,
           return;
         }
 
-      mumble_network_read_bytes (self, buffer, header.length, &tmp_error);
+      mumble_network_read_bytes (self, buffer, length, &tmp_error);
       if (tmp_error != NULL)
         {
           fprintf (stderr, "Error: %s\n", tmp_error->message);
@@ -251,35 +252,26 @@ mumble_network_read_packet_cb (GObject *source_object,
           g_free (buffer);
           return;
         }
-
-      if (header.type == MUMBLE_PACKET_TYPE__VERSION)
-        {
-          MumbleProto__Version *version =
-            mumble_proto__version__unpack (NULL, header.length, buffer);
-
-          printf ("version.has_version = %d\n", version->has_version);
-          printf ("version.version = %x\n", version->version);
-          printf ("version.release = %s\n", version->release);
-          printf ("version.os = %s\n", version->os);
-          printf ("version.os_version = %s\n", version->os_version);
-          mumble_proto__version__free_unpacked (version, NULL);
-        }
-
-      g_free (buffer);
     }
-  mumble_network_read_packet_async (self, &tmp_error);
-  if (tmp_error != NULL)
+  if (self->read_cb (self, type, buffer, length) == TRUE)
     {
-      fprintf (stderr, "Error: %s\n", tmp_error->message);
-      return;
+      mumble_network_read_packet_async (self, self->read_cb, &tmp_error);
+      if (tmp_error != NULL)
+        {
+          fprintf (stderr, "Error: %s\n", tmp_error->message);
+          return;
+        }
     }
 }
 
 void
-mumble_network_read_packet_async (MumbleNetwork *self, GError **err)
+mumble_network_read_packet_async (MumbleNetwork *self,
+                                  mumble_read_callback cb, GError **err)
 {
   g_return_if_fail (self != NULL);
+  g_return_if_fail (cb != NULL);
 
+  self->read_cb = cb;
   const size_t buffer_length = 6;
   guint8 *buffer = g_malloc0 (buffer_length);
   if (buffer == NULL)

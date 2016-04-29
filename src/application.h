@@ -24,13 +24,16 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 
+/* *INDENT-OFF* */
 G_BEGIN_DECLS
 #define MUMBLE_TYPE_APPLICATION mumble_application_get_type ()
-/* *INDENT-OFF* */
 G_DECLARE_FINAL_TYPE (MumbleApplication, mumble_application, MUMBLE,
                       APPLICATION, GApplication)
 /* *INDENT-ON* */
 MumbleApplication *mumble_application_new ();
 
+/* *INDENT-OFF* */
 G_END_DECLS
+/* *INDENT-ON* */
+
 #endif // __NETWORK_H__
