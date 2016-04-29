@@ -26,12 +26,15 @@
 
 #include "packet_header.h"
 
-#define MUMBLE_PACKET_TYPE__VERSION 0
-#define MUMBLE_PACKET_TYPE__AUTHENTICATE 2
-#define MUMBLE_PACKET_TYPE__PING 3
+enum MumblePacketType
+{
+  MUMBLE_PACKET_TYPE__VERSION = 0,
+  MUMBLE_PACKET_TYPE__AUTHENTICATE = 2,
+  MUMBLE_PACKET_TYPE__PING = 3
+}
 
-G_BEGIN_DECLS
 /* *INDENT-OFF* */
+G_BEGIN_DECLS
 #define MUMBLE_TYPE_NETWORK mumble_network_get_type ()
 G_DECLARE_FINAL_TYPE (MumbleNetwork, mumble_network, MUMBLE, NETWORK, GObject)
 /* *INDENT-ON* */
@@ -40,8 +43,8 @@ MumbleNetwork *mumble_network_new ();
 
 void mumble_network_connect (MumbleNetwork *self,
                              const gchar *server_name,
-                             guint16 server_port, GTlsCertificate *certificate,
-                             GError **err);
+                             guint16 server_port,
+                             GTlsCertificate *certificate, GError **err);
 
 void mumble_network_read_bytes (MumbleNetwork *self, guint8 *buffer,
                                 size_t buffer_length, GError **err);
@@ -51,7 +54,6 @@ void mumble_network_read_packet_header (MumbleNetwork *self,
                                         *packet_header, GError **err);
 
 void mumble_network_read_packet_async (MumbleNetwork *self, GError **err);
-
 typedef size_t (*mumble_message_get_packed_size) (const gpointer message);
 typedef size_t (*mumble_message_pack) (const gpointer message, guint8 *out);
 
@@ -60,6 +62,8 @@ void mumble_network_write_packet (MumbleNetwork *self, guint16 type,
                                   get_packed_size, mumble_message_pack pack,
                                   gpointer message, GError **err);
 
+/* *INDENT-OFF* */
 G_END_DECLS
-#endif // __NETWORK_H__
+/* *INDENT-ON* */
 
+#endif // __NETWORK_H__
