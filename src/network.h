@@ -67,8 +67,9 @@ typedef size_t (*mumble_message_get_packed_size) (const gpointer message);
 typedef size_t (*mumble_message_pack) (const gpointer message, guint8 *out);
 
 typedef gboolean (*mumble_read_callback) (MumbleNetwork *self,
-                                          MumbleMessageType type, guint8 *data,
-                                          guint32 length, gpointer user_data);
+                                          MumbleMessageType type,
+                                          guint8 *data, guint32 length,
+                                          gpointer user_data);
 
 MumbleNetwork *mumble_network_new ();
 
@@ -79,8 +80,7 @@ void mumble_network_connect (MumbleNetwork *self,
 
 void mumble_network_read_packet_async (MumbleNetwork *self,
                                        mumble_read_callback cb,
-                                       gpointer user_data,
-                                       GError **err);
+                                       gpointer user_data, GError **err);
 
 void mumble_network_write_packet (MumbleNetwork *self, guint16 type,
                                   mumble_message_get_packed_size

@@ -214,7 +214,7 @@ typedef struct _ReadPacketData
 
 void
 mumble_network_read_packet_cb (GObject *source_object,
-                               GAsyncResult * res, gpointer user_data)
+                               GAsyncResult *res, gpointer user_data)
 {
   GInputStream *istream = G_INPUT_STREAM (source_object);
   GError *tmp_error = NULL;
@@ -257,7 +257,8 @@ mumble_network_read_packet_cb (GObject *source_object,
     }
   if (self->read_cb (self, type, buffer, length, outer_user_data) == TRUE)
     {
-      mumble_network_read_packet_async (self, self->read_cb, outer_user_data, &tmp_error);
+      mumble_network_read_packet_async (self, self->read_cb, outer_user_data,
+                                        &tmp_error);
       if (tmp_error != NULL)
         {
           fprintf (stderr, "Error: %s\n", tmp_error->message);
@@ -268,7 +269,8 @@ mumble_network_read_packet_cb (GObject *source_object,
 
 void
 mumble_network_read_packet_async (MumbleNetwork *self,
-                                  mumble_read_callback cb, gpointer user_data, GError **err)
+                                  mumble_read_callback cb, gpointer user_data,
+                                  GError **err)
 {
   g_return_if_fail (self != NULL);
   g_return_if_fail (cb != NULL);
