@@ -18,6 +18,7 @@
 */
 
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "Mumble.pb-c.h"
 
@@ -36,6 +37,7 @@ typedef struct _MumbleApplication
   GMainLoop *loop;
   GSettings *set;
   MumbleNetwork *net;
+  GHashTable *session_opus_data;
 
 } MumbleApplication;
 
@@ -56,6 +58,27 @@ mumble_application_class_init (MumbleApplicationClass *klass)
   application_class->activate = mumble_application_activate;
 }
 
+typedef struct _MumbleOpusFrame
+{
+  guint16 length;
+  guint8 *data;
+  gboolean last_frame;
+} MumbleOpusFrame;
+
+void
+free_opus_data_queue_entry (gpointer data)
+{
+  MumbleOpusFrame *frame = (MumbleOpusFrame *) data;
+  g_free (frame->data);
+  g_free (data);
+}
+
+void
+free_opus_data_queue (gpointer data)
+{
+  g_queue_free_full (data, free_opus_data_queue_entry);
+}
+
 static void
 mumble_application_init (MumbleApplication *self)
 {
@@ -65,6 +88,10 @@ mumble_application_init (MumbleApplication *self)
   g_return_if_fail (self->set != NULL);
   self->net = mumble_network_new ();
   g_return_if_fail (self->net != NULL);
+  self->session_opus_data =
+    g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL,
+                           free_opus_data_queue);
+  g_return_if_fail (self->net != NULL);
 }
 
 void
@@ -73,6 +100,7 @@ mumble_application_finalize (GObject *gobject)
   g_return_if_fail (gobject != NULL);
   MumbleApplication *self = MUMBLE_APPLICATION (gobject);
 
+  g_object_unref (self->session_opus_data);
   g_object_unref (self->net);
   g_object_unref (self->set);
   g_object_unref (self->loop);
@@ -148,17 +176,73 @@ send_ping (MumbleNetwork *net, GError **err)
                                mumble_proto__ping__pack, &message, err);
 }
 
+void
+read_audio_data (MumbleApplication *self, guint8 *data,
+                 G_GNUC_UNUSED guint32 length)
+{
+  guint8 header = data[0];
+  // Upper three bits
+  guint8 type = (header & 0xE0) >> 5;
+  // Lower five bits
+  guint8 target = header & 0x1F;
+  if (type == 1)
+    {
+      // Target is always zero in ping message
+      g_return_if_fail (target == 0);
+      g_return_if_fail (header == 0x20);
+      // TODO: Process ping message
+    }
+  else
+    {
+      gint read_index = 1;
+      guint32 session_id =
+        (guint32) packet_data_stream_decode (data, &read_index);
+      printf ("SID = %d, ", session_id);
+      guint64 sequence_number = packet_data_stream_decode (data, &read_index);
+      printf ("SEQ = %" PRIu64 ", ", sequence_number);
+      if (type == 4)
+        {
+          // Opus data
+          printf ("OPUS ");
+          GQueue *queue;
+          if (g_hash_table_lookup_extended
+              (self->session_opus_data, GINT_TO_POINTER (session_id), NULL,
+               (gpointer) & queue) == FALSE)
+            {
+              queue = g_queue_new ();
+              g_hash_table_insert (self->session_opus_data,
+                                   GINT_TO_POINTER (session_id), queue);
+            }
+          g_return_if_fail (queue != NULL);
+          MumbleOpusFrame *frame = g_malloc0 (sizeof (MumbleOpusFrame));
+          if (frame == NULL)
+            {
+              fprintf (stderr, "Could not allocate memory for opus frame\n");
+              return;
+            }
+          frame->last_frame = (data[read_index] & 0x2000) != 0;
+          frame->length =
+            (guint32) packet_data_stream_decode (data, &read_index);
+          frame->data = g_memdup (data + read_index, frame->length);
+          g_queue_push_tail (queue, frame);
+        }
+    }
+}
+
 gboolean
 read_message (MumbleNetwork *net, MumbleMessageType type, guint8 *data,
-              guint32 length)
+              guint32 length, gpointer user_data)
 {
   g_return_val_if_fail (net != NULL, FALSE);
+  g_return_val_if_fail (user_data != NULL, FALSE);
+  MumbleApplication *self = MUMBLE_APPLICATION (user_data);
   // Payload could be empty (i.e. PING message without any actual data filled)
   // That's not an error
   if (data == NULL)
     {
       return TRUE;
     }
+  g_return_val_if_fail (length != 0, FALSE);
 
   if (type == MUMBLE_MESSAGE_TYPE__VERSION)
     {
@@ -177,8 +261,7 @@ read_message (MumbleNetwork *net, MumbleMessageType type, guint8 *data,
     }
   else if (type == MUMBLE_MESSAGE_TYPE__UDP_TUNNEL)
     {
-      
-      // printf ("%d[%d] ", type, length);
+      read_audio_data (self, data, length);
     }
   else if (type == MUMBLE_MESSAGE_TYPE__REJECT)
     {
@@ -270,7 +353,7 @@ mumble_application_activate (GApplication *app)
       goto fail_cleanup;
     }
 
-  mumble_network_read_packet_async (self->net, &read_message, &err);
+  mumble_network_read_packet_async (self->net, &read_message, self, &err);
   if (err != NULL)
     {
       fprintf (stderr,

@@ -24,6 +24,8 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 
+#include "packet_data_stream.h"
+
 /* *INDENT-OFF* */
 G_BEGIN_DECLS
 #define MUMBLE_TYPE_APPLICATION mumble_application_get_type ()
