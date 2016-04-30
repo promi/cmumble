@@ -19,5 +19,4 @@
 
 #include <glib.h>
 
-guint64 packet_data_stream_decode (guint8 **buffer, int *buffer_length1,
-                                   gint *read_index);
+guint64 packet_data_stream_decode (guint8 *buffer, gint *read_index);
