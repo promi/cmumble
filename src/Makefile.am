@@ -21,7 +21,9 @@ cmumble_SOURCES = \
 	error.c \
 	com.github.promi.cmumble.gschema.xml \
 	application.c \
-	application.h
+	application.h \
+	packet_data_stream.c \
+	packet_data_stream.h
 
 cmumble_CFLAGS = -std=c11 \
 	-Wall \

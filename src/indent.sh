@@ -1,6 +1,7 @@
 #!/bin/sh
 indent \
 -T gchar \
+-T gint \
 -T guint16 \
 -T guint32 \
 -T guint8 \

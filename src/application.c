@@ -177,7 +177,8 @@ read_message (MumbleNetwork *net, MumbleMessageType type, guint8 *data,
     }
   else if (type == MUMBLE_MESSAGE_TYPE__UDP_TUNNEL)
     {
-      printf ("%d[%d] ", type, length);
+      
+      // printf ("%d[%d] ", type, length);
     }
   else if (type == MUMBLE_MESSAGE_TYPE__REJECT)
     {
