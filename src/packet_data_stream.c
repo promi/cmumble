@@ -20,7 +20,7 @@
 #include "packet_data_stream.h"
 
 guint64
-packet_data_stream_decode (guint8 *buffer, gint *read_index)
+packet_data_stream_decode (guint8 *buffer, guint *read_index)
 {
   guint64 v0 = (guint64) buffer[(*read_index)++];
   if ((v0 & 0x80) == 0x00)

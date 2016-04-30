@@ -177,8 +177,7 @@ send_ping (MumbleNetwork *net, GError **err)
 }
 
 void
-read_audio_data (MumbleApplication *self, guint8 *data,
-                 G_GNUC_UNUSED guint32 length)
+read_audio_data (MumbleApplication *self, guint8 *data, guint32 length)
 {
   guint8 header = data[0];
   // Upper three bits
@@ -194,7 +193,8 @@ read_audio_data (MumbleApplication *self, guint8 *data,
     }
   else
     {
-      gint read_index = 1;
+      // TODO: Make sure varint decoding doesn't read outside buffer data range
+      guint read_index = 1;
       guint32 session_id =
         (guint32) packet_data_stream_decode (data, &read_index);
       printf ("SID = %d, ", session_id);
@@ -220,9 +220,14 @@ read_audio_data (MumbleApplication *self, guint8 *data,
               fprintf (stderr, "Could not allocate memory for opus frame\n");
               return;
             }
-          frame->last_frame = (data[read_index] & 0x2000) != 0;
           frame->length =
             (guint32) packet_data_stream_decode (data, &read_index);
+          // Check terminator bit
+          frame->last_frame = (frame->length & 0x2000) != 0 ? TRUE : FALSE;
+          // Clear terminator bit
+          frame->length = frame->length & 0x1FFF;
+          // WARNING: The length must be cleaned up here
+          g_return_if_fail (read_index + frame->length <= length);
           frame->data = g_memdup (data + read_index, frame->length);
           g_queue_push_tail (queue, frame);
         }

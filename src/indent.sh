@@ -2,6 +2,7 @@
 indent \
 -T gchar \
 -T gint \
+-T guint \
 -T guint16 \
 -T guint32 \
 -T guint8 \
