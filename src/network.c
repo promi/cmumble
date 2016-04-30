@@ -209,6 +209,7 @@ typedef struct _ReadPacketData
   MumbleNetwork *net;
   guint8 *buffer;
   gsize buffer_length;
+  gpointer user_data;
 } ReadPacketData;
 
 void
@@ -220,6 +221,7 @@ mumble_network_read_packet_cb (GObject *source_object,
   ReadPacketData *rpd = user_data;
   guint8 *header_buffer = rpd->buffer;
   MumbleNetwork *self = rpd->net;
+  gpointer outer_user_data = rpd->user_data;
   g_free (rpd);
   gsize bytes_read;
   if (g_input_stream_read_all_finish (istream, res, &bytes_read, &tmp_error)
@@ -253,9 +255,9 @@ mumble_network_read_packet_cb (GObject *source_object,
           return;
         }
     }
-  if (self->read_cb (self, type, buffer, length) == TRUE)
+  if (self->read_cb (self, type, buffer, length, outer_user_data) == TRUE)
     {
-      mumble_network_read_packet_async (self, self->read_cb, &tmp_error);
+      mumble_network_read_packet_async (self, self->read_cb, outer_user_data, &tmp_error);
       if (tmp_error != NULL)
         {
           fprintf (stderr, "Error: %s\n", tmp_error->message);
@@ -266,7 +268,7 @@ mumble_network_read_packet_cb (GObject *source_object,
 
 void
 mumble_network_read_packet_async (MumbleNetwork *self,
-                                  mumble_read_callback cb, GError **err)
+                                  mumble_read_callback cb, gpointer user_data, GError **err)
 {
   g_return_if_fail (self != NULL);
   g_return_if_fail (cb != NULL);
@@ -289,6 +291,7 @@ mumble_network_read_packet_async (MumbleNetwork *self,
   rpd->buffer = buffer;
   rpd->buffer_length = buffer_length;
   rpd->net = self;
+  rpd->user_data = user_data;
 
   g_input_stream_read_all_async (istream, buffer, buffer_length,
                                  G_PRIORITY_DEFAULT, NULL,
