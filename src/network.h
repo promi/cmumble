@@ -56,6 +56,11 @@ typedef enum _MumbleMessageType
   MUMBLE_MESSAGE_TYPE__SUGGEST_CONFIG = 25
 } MumbleMessageType;
 
+#define MUMBLE_NETWORK_WRITE_PACKET(net, UPPER_NAME, lower_name, message, err) \
+mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__##UPPER_NAME, \
+(mumble_message_get_packed_size) mumble_proto__##lower_name##__get_packed_size, \
+(mumble_message_pack) mumble_proto__##lower_name##__pack, message, err)
+
 /* *INDENT-OFF* */
 G_BEGIN_DECLS
 #define MUMBLE_TYPE_NETWORK mumble_network_get_type ()

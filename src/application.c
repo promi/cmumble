@@ -128,11 +128,7 @@ send_our_version (MumbleNetwork *net, GError **err)
   message.os = "Unknown";
   message.os_version = "Unknown";
 
-  mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__VERSION,
-                               (mumble_message_get_packed_size)
-                               mumble_proto__version__get_packed_size,
-                               (mumble_message_pack)
-                               mumble_proto__version__pack, &message, err);
+  MUMBLE_NETWORK_WRITE_PACKET (net, VERSION, version, &message, err);
 }
 
 void
@@ -152,11 +148,7 @@ send_authenticate (MumbleNetwork *net, const gchar *username, GError **err)
   message.has_opus = 1;
   message.opus = 1;
 
-  mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__AUTHENTICATE,
-                               (mumble_message_get_packed_size)
-                               mumble_proto__authenticate__get_packed_size,
-                               (mumble_message_pack)
-                               mumble_proto__authenticate__pack, &message,
+  MUMBLE_NETWORK_WRITE_PACKET (net, AUTHENTICATE, authenticate, &message,
                                err);
 }
 
@@ -169,11 +161,7 @@ send_ping (MumbleNetwork *net, GError **err)
   MumbleProto__Ping message = MUMBLE_PROTO__PING__INIT;
   // message.has_timestamp = 1;
 
-  mumble_network_write_packet (net, MUMBLE_MESSAGE_TYPE__PING,
-                               (mumble_message_get_packed_size)
-                               mumble_proto__ping__get_packed_size,
-                               (mumble_message_pack)
-                               mumble_proto__ping__pack, &message, err);
+  MUMBLE_NETWORK_WRITE_PACKET (net, PING, ping, &message, err);
 }
 
 void
