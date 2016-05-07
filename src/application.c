@@ -340,6 +340,7 @@ shout_thread (gpointer data)
               if (sample)
                 {
                   arr[i] += *sample;
+                  g_free (sample);
                 }
             }
         }
