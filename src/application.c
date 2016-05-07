@@ -35,6 +35,8 @@
 
 #include "application.h"
 
+const int channels = 1;
+
 typedef struct _MumbleApplication
 {
   GApplication parent;
@@ -98,9 +100,35 @@ mumble_application_init (MumbleApplication *self)
   shout_init ();
   self->shout = shout_new ();
   g_return_if_fail (self->shout != NULL);
+
+  int r = shout_set_host (self->shout, "example.com");
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_protocol (self->shout, SHOUT_PROTOCOL_HTTP);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_port (self->shout, 8000);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_password (self->shout, "hackme");
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_mount (self->shout, "/test.ogg");
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_user (self->shout, "source");
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  shout_set_format (self->shout, SHOUT_FORMAT_OGG);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_open (self->shout);
+  printf ("%d %s\n", r, shout_get_error (self->shout));
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
   vorbis_info_init (&self->vorbis_info);
-  vorbis_encode_init_vbr (&self->vorbis_info, 2, 48000, 0.0);
-  int r = vorbis_analysis_init (&self->vorbis_dsp_state, &self->vorbis_info);
+  vorbis_encode_init_vbr (&self->vorbis_info, channels, 48000, 0.0);
+  r = vorbis_analysis_init (&self->vorbis_dsp_state, &self->vorbis_info);
   printf ("%d\n", r);
   g_return_if_fail (r == 0);
   r = vorbis_block_init (&self->vorbis_dsp_state, &self->vorbis_block);
@@ -237,7 +265,7 @@ gsize
 get_pcm_frames_length (gint32 Fs, gint channels)
 {
   // 120 ms is the maximum PCM frame length the opus decoder can write at once
-  return Fs * 120 / 1000 * channels;
+  return Fs / 1000 * 120 * channels;
 }
 
 void
@@ -247,7 +275,6 @@ read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
   g_return_if_fail (self != NULL);
   g_return_if_fail (data != NULL);
   g_return_if_fail (data_length > 0);
-  const int channels = 2;
   g_return_if_fail (channels == 1 || channels == 2);
   OpusDecoder *decoder = get_decoder (self, session_id, channels);
   g_return_if_fail (decoder != NULL);
@@ -261,17 +288,51 @@ read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
   g_return_if_fail (opus_length <= 0x1FFF);
   g_return_if_fail (read_index + opus_length <= data_length);
   const gsize pcm_frames_length = get_pcm_frames_length (48000, channels);
-  gint16 *pcm_frames = g_malloc0 (sizeof (gint16) * pcm_frames_length);
-  const int err = opus_decode (decoder, data + read_index, opus_length,
-                               pcm_frames, pcm_frames_length, 0);
+  gfloat *pcm_frames = g_malloc0 (sizeof (gfloat) * pcm_frames_length);
+  const int err = opus_decode_float (decoder, data + read_index, opus_length,
+                                     pcm_frames, pcm_frames_length, 0);
   g_return_if_fail (err >= 0);
   printf ("OPUS Decoded %d samples from %" G_GSIZE_FORMAT " bytes\n", err,
           data_length);
+  gfloat **buffer = vorbis_analysis_buffer (&self->vorbis_dsp_state,
+                                            err);
+  for (gsize i = 0; i < err; i++)
+    {
+      buffer[i % channels][i / channels] = pcm_frames[i];
+    }
+  int r = vorbis_analysis_wrote (&self->vorbis_dsp_state,
+                                 err);
+  g_return_if_fail (r == 0);
+  g_free (pcm_frames);
+  while (vorbis_analysis_blockout
+         (&self->vorbis_dsp_state, &self->vorbis_block) == 1)
+    {
+      ogg_packet ogg_packet;
+      ogg_page ogg_page;
+
+      vorbis_analysis (&self->vorbis_block, &ogg_packet);
+      vorbis_bitrate_addblock (&self->vorbis_block);
+
+      while (vorbis_bitrate_flushpacket
+             (&self->vorbis_dsp_state, &ogg_packet))
+        {
+          ogg_stream_packetin (&self->ogg_stream_state, &ogg_packet);
+
+          while (ogg_stream_pageout (&self->ogg_stream_state, &ogg_page))
+            {
+              r =
+                shout_send (self->shout, ogg_page.header,
+                            ogg_page.header_len);
+              g_return_if_fail (r == SHOUTERR_SUCCESS);
+              r = shout_send (self->shout, ogg_page.body, ogg_page.body_len);
+              g_return_if_fail (r == SHOUTERR_SUCCESS);
+            }
+        }
+    }
   if (opus_last_frame == TRUE)
     {
       opus_decoder_ctl (decoder, OPUS_RESET_STATE);
     }
-  g_free (pcm_frames);
 }
 
 void
