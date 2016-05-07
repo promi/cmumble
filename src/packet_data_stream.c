@@ -22,36 +22,36 @@
 guint64
 packet_data_stream_decode (guint8 *buffer, guint *read_index)
 {
-  guint64 v0 = (guint64) buffer[(*read_index)++];
+  guint64 v0 = buffer[(*read_index)++];
   if ((v0 & 0x80) == 0x00)
     {
       return v0 & 0x7F;
     }
   else if ((v0 & 0xC0) == 0x80)
     {
-      guint64 v1 = (guint64) buffer[(*read_index)++];
+      guint64 v1 = buffer[(*read_index)++];
       return (v0 & 0x4F) << 8 | v1;
     }
   else if ((v0 & 0xF0) == 0xF0)
     {
       if ((v0 & 0xFC) == 0xF0)
         {
-          guint64 v1 = (guint64) buffer[(*read_index)++];
-          guint64 v2 = (guint64) buffer[(*read_index)++];
-          guint64 v3 = (guint64) buffer[(*read_index)++];
-          guint64 v4 = (guint64) buffer[(*read_index)++];
+          guint64 v1 = buffer[(*read_index)++];
+          guint64 v2 = buffer[(*read_index)++];
+          guint64 v3 = buffer[(*read_index)++];
+          guint64 v4 = buffer[(*read_index)++];
           return v1 << 24 | v2 << 16 | v3 << 8 | v4;
         }
       else if ((v0 & 0xFC) == 0xF4)
         {
-          guint64 v1 = (guint64) buffer[(*read_index)++];
-          guint64 v2 = (guint64) buffer[(*read_index)++];
-          guint64 v3 = (guint64) buffer[(*read_index)++];
-          guint64 v4 = (guint64) buffer[(*read_index)++];
-          guint64 v5 = (guint64) buffer[(*read_index)++];
-          guint64 v6 = (guint64) buffer[(*read_index)++];
-          guint64 v7 = (guint64) buffer[(*read_index)++];
-          guint64 v8 = (guint64) buffer[(*read_index)++];
+          guint64 v1 = buffer[(*read_index)++];
+          guint64 v2 = buffer[(*read_index)++];
+          guint64 v3 = buffer[(*read_index)++];
+          guint64 v4 = buffer[(*read_index)++];
+          guint64 v5 = buffer[(*read_index)++];
+          guint64 v6 = buffer[(*read_index)++];
+          guint64 v7 = buffer[(*read_index)++];
+          guint64 v8 = buffer[(*read_index)++];
           return v1 << 56 | v2 << 48 | v3 << 40 | v4 << 32 |
             v5 << 24 | v6 << 16 | v7 << 8 | v8;
         }
@@ -70,15 +70,15 @@ packet_data_stream_decode (guint8 *buffer, guint *read_index)
     }
   else if ((v0 & 0xF0) == 0xE0)
     {
-      guint64 v1 = (guint64) buffer[(*read_index)++];
-      guint64 v2 = (guint64) buffer[(*read_index)++];
-      guint64 v3 = (guint64) buffer[(*read_index)++];
+      guint64 v1 = buffer[(*read_index)++];
+      guint64 v2 = buffer[(*read_index)++];
+      guint64 v3 = buffer[(*read_index)++];
       return (v0 & 0x0F) << 24 | v1 << 16 | v2 << 8 | v3;
     }
   else if ((v0 & 0xE0) == 0xC0)
     {
-      guint64 v1 = (guint64) buffer[(*read_index)++];
-      guint64 v2 = (guint64) buffer[(*read_index)++];
+      guint64 v1 = buffer[(*read_index)++];
+      guint64 v2 = buffer[(*read_index)++];
       return (v0 & 0x1F) << 16 | v1 << 8 | v2;
     }
   else

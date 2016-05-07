@@ -20,6 +20,11 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+#include <opus/opus.h>
+#include <ogg/ogg.h>
+#include <vorbis/vorbisenc.h>
+#include <shout/shout.h>
+
 #include "Mumble.pb-c.h"
 
 #include "error.h"
@@ -37,7 +42,16 @@ typedef struct _MumbleApplication
   GMainLoop *loop;
   GSettings *set;
   MumbleNetwork *net;
-  GHashTable *session_opus_data;
+  GHashTable *session_opus_decoders;
+  GHashTable *session_pcm_frame_queues;
+
+  vorbis_info vorbis_info;
+  vorbis_dsp_state vorbis_dsp_state;
+  vorbis_block vorbis_block;
+  ogg_stream_state ogg_stream_state;
+  vorbis_comment vorbis_comment;
+
+  shout_t *shout;
 
 } MumbleApplication;
 
@@ -58,25 +72,10 @@ mumble_application_class_init (MumbleApplicationClass *klass)
   application_class->activate = mumble_application_activate;
 }
 
-typedef struct _MumbleOpusFrame
-{
-  guint16 length;
-  guint8 *data;
-  gboolean last_frame;
-} MumbleOpusFrame;
-
 void
-free_opus_data_queue_entry (gpointer data)
+free_pcm_frame_queue (gpointer data)
 {
-  MumbleOpusFrame *frame = (MumbleOpusFrame *) data;
-  g_free (frame->data);
-  g_free (data);
-}
-
-void
-free_opus_data_queue (gpointer data)
-{
-  g_queue_free_full (data, free_opus_data_queue_entry);
+  g_queue_free_full (data, g_free);
 }
 
 static void
@@ -88,10 +87,55 @@ mumble_application_init (MumbleApplication *self)
   g_return_if_fail (self->set != NULL);
   self->net = mumble_network_new ();
   g_return_if_fail (self->net != NULL);
-  self->session_opus_data =
+  self->session_opus_decoders =
     g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL,
-                           free_opus_data_queue);
-  g_return_if_fail (self->net != NULL);
+                           (GDestroyNotify) opus_decoder_destroy);
+  g_return_if_fail (self->session_opus_decoders != NULL);
+  self->session_pcm_frame_queues =
+    g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL,
+                           free_pcm_frame_queue);
+  g_return_if_fail (self->session_pcm_frame_queues != NULL);
+  shout_init ();
+  self->shout = shout_new ();
+  g_return_if_fail (self->shout != NULL);
+  vorbis_info_init (&self->vorbis_info);
+  vorbis_encode_init_vbr (&self->vorbis_info, 2, 48000, 0.0);
+  int r = vorbis_analysis_init (&self->vorbis_dsp_state, &self->vorbis_info);
+  printf ("%d\n", r);
+  g_return_if_fail (r == 0);
+  r = vorbis_block_init (&self->vorbis_dsp_state, &self->vorbis_block);
+  g_return_if_fail (r == 0);
+  r = ogg_stream_init (&self->ogg_stream_state, 0);
+  g_return_if_fail (r == 0);
+  vorbis_comment_init (&self->vorbis_comment);
+
+  ogg_packet header_packet;
+  ogg_packet comment_header_packet;
+  ogg_packet code_header_packet;
+
+  r = vorbis_analysis_headerout (&self->vorbis_dsp_state,
+                                 &self->vorbis_comment,
+                                 &header_packet,
+                                 &comment_header_packet, &code_header_packet);
+  g_return_if_fail (r == 0);
+
+  r = ogg_stream_packetin (&self->ogg_stream_state, &header_packet);
+  g_return_if_fail (r == 0);
+  r = ogg_stream_packetin (&self->ogg_stream_state, &comment_header_packet);
+  g_return_if_fail (r == 0);
+  r = ogg_stream_packetin (&self->ogg_stream_state, &code_header_packet);
+  g_return_if_fail (r == 0);
+
+  ogg_page ogg_page;
+  while (ogg_stream_flush (&self->ogg_stream_state, &ogg_page))
+    {
+      r = shout_send (self->shout, ogg_page.header, ogg_page.header_len);
+      g_return_if_fail (r == 0);
+      r = shout_send (self->shout, ogg_page.body, ogg_page.body_len);
+      g_return_if_fail (r == 0);
+    }
+
+  vorbis_comment_clear (&self->vorbis_comment);
 }
 
 void
@@ -100,7 +144,15 @@ mumble_application_finalize (GObject *gobject)
   g_return_if_fail (gobject != NULL);
   MumbleApplication *self = MUMBLE_APPLICATION (gobject);
 
-  g_object_unref (self->session_opus_data);
+  vorbis_comment_clear (&self->vorbis_comment);
+  ogg_stream_clear (&self->ogg_stream_state);
+  vorbis_block_clear (&self->vorbis_block);
+  vorbis_dsp_clear (&self->vorbis_dsp_state);
+  vorbis_info_clear (&self->vorbis_info);
+  shout_close (self->shout);
+  shout_shutdown ();
+  g_object_unref (self->session_pcm_frame_queues);
+  g_object_unref (self->session_opus_decoders);
   g_object_unref (self->net);
   g_object_unref (self->set);
   g_object_unref (self->loop);
@@ -164,8 +216,66 @@ send_ping (MumbleNetwork *net, GError **err)
   MUMBLE_NETWORK_WRITE_PACKET (net, PING, ping, &message, err);
 }
 
+OpusDecoder *
+get_decoder (MumbleApplication *self, guint32 session_id, gint channels)
+{
+  OpusDecoder *decoder;
+  if (g_hash_table_lookup_extended
+      (self->session_opus_decoders, GINT_TO_POINTER (session_id),
+       NULL, (gpointer) & decoder) == FALSE)
+    {
+      int oerr = 0;
+      decoder = opus_decoder_create (48000, channels, &oerr);
+      g_return_val_if_fail (oerr == OPUS_OK, NULL);
+      g_hash_table_insert (self->session_opus_decoders,
+                           GINT_TO_POINTER (session_id), decoder);
+    }
+  return decoder;
+}
+
+gsize
+get_pcm_frames_length (gint32 Fs, gint channels)
+{
+  // 120 ms is the maximum PCM frame length the opus decoder can write at once
+  return Fs * 120 / 1000 * channels;
+}
+
 void
-read_audio_data (MumbleApplication *self, guint8 *data, guint32 length)
+read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
+                guint read_index, guint32 session_id)
+{
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (data_length > 0);
+  const int channels = 2;
+  g_return_if_fail (channels == 1 || channels == 2);
+  OpusDecoder *decoder = get_decoder (self, session_id, channels);
+  g_return_if_fail (decoder != NULL);
+
+  guint32 opus_length =
+    (guint32) packet_data_stream_decode (data, &read_index);
+  // Check terminator bit
+  const gboolean opus_last_frame = (opus_length & 0x2000) != 0 ? TRUE : FALSE;
+  // Clear terminator bit
+  opus_length = opus_length & 0x1FFF;
+  g_return_if_fail (opus_length <= 0x1FFF);
+  g_return_if_fail (read_index + opus_length <= data_length);
+  const gsize pcm_frames_length = get_pcm_frames_length (48000, channels);
+  gint16 *pcm_frames = g_malloc0 (sizeof (gint16) * pcm_frames_length);
+  const int err = opus_decode (decoder, data + read_index, opus_length,
+                               pcm_frames, pcm_frames_length, 0);
+  g_return_if_fail (err >= 0);
+  printf ("OPUS Decoded %d samples from %" G_GSIZE_FORMAT " bytes\n", err,
+          data_length);
+  if (opus_last_frame == TRUE)
+    {
+      opus_decoder_ctl (decoder, OPUS_RESET_STATE);
+    }
+  g_free (pcm_frames);
+}
+
+void
+read_audio_data (MumbleApplication *self, guint8 *data, guint32 data_length)
 {
   guint8 header = data[0];
   // Upper three bits
@@ -187,37 +297,11 @@ read_audio_data (MumbleApplication *self, guint8 *data, guint32 length)
         (guint32) packet_data_stream_decode (data, &read_index);
       printf ("SID = %d, ", session_id);
       guint64 sequence_number = packet_data_stream_decode (data, &read_index);
-      printf ("SEQ = %" PRIu64 ", ", sequence_number);
+      printf ("SEQ = %" G_GUINT64_FORMAT ", ", sequence_number);
       if (type == 4)
         {
           // Opus data
-          printf ("OPUS ");
-          GQueue *queue;
-          if (g_hash_table_lookup_extended
-              (self->session_opus_data, GINT_TO_POINTER (session_id), NULL,
-               (gpointer) & queue) == FALSE)
-            {
-              queue = g_queue_new ();
-              g_hash_table_insert (self->session_opus_data,
-                                   GINT_TO_POINTER (session_id), queue);
-            }
-          g_return_if_fail (queue != NULL);
-          MumbleOpusFrame *frame = g_malloc0 (sizeof (MumbleOpusFrame));
-          if (frame == NULL)
-            {
-              fprintf (stderr, "Could not allocate memory for opus frame\n");
-              return;
-            }
-          frame->length =
-            (guint32) packet_data_stream_decode (data, &read_index);
-          // Check terminator bit
-          frame->last_frame = (frame->length & 0x2000) != 0 ? TRUE : FALSE;
-          // Clear terminator bit
-          frame->length = frame->length & 0x1FFF;
-          // WARNING: The length must be cleaned up here
-          g_return_if_fail (read_index + frame->length <= length);
-          frame->data = g_memdup (data + read_index, frame->length);
-          g_queue_push_tail (queue, frame);
+          read_opus_data (self, data, data_length, read_index, session_id);
         }
     }
 }

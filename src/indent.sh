@@ -6,6 +6,12 @@ indent \
 -T guint16 \
 -T guint32 \
 -T guint8 \
+-T ogg_stream_state \
+-T shout_t \
+-T vorbis_block \
+-T vorbis_comment \
+-T vorbis_dsp_state \
+-T vorbis_info \
 -T GApplication \
 -T GApplicationClass \
 -T GAsyncResult \
@@ -14,6 +20,7 @@ indent \
 -T GNetworkAddress \
 -T GObject \
 -T GObjectClass \
+-T GQueue \
 -T GSocketClient \
 -T GSocketClientEvent \
 -T GSocketConnectable \
@@ -24,4 +31,5 @@ indent \
 -T MumbleNetwork \
 -T MumbleNetworkClass \
 -T MumblePacketHeader \
+-T OpusDecoder \
 -nut "$@"
