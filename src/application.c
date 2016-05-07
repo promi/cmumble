@@ -45,7 +45,7 @@ typedef struct _MumbleApplication
   GSettings *set;
   MumbleNetwork *net;
   GHashTable *session_opus_decoders;
-  GHashTable *session_pcm_frame_queues;
+  GHashTable *session_pcm_sample_queues;
 
   vorbis_info vorbis_info;
   vorbis_dsp_state vorbis_dsp_state;
@@ -54,6 +54,8 @@ typedef struct _MumbleApplication
   vorbis_comment vorbis_comment;
 
   shout_t *shout;
+
+  GMutex mutex;
 
 } MumbleApplication;
 
@@ -75,7 +77,7 @@ mumble_application_class_init (MumbleApplicationClass *klass)
 }
 
 void
-free_pcm_frame_queue (gpointer data)
+free_pcm_sample_queue (gpointer data)
 {
   g_queue_free_full (data, g_free);
 }
@@ -93,10 +95,10 @@ mumble_application_init (MumbleApplication *self)
     g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL,
                            (GDestroyNotify) opus_decoder_destroy);
   g_return_if_fail (self->session_opus_decoders != NULL);
-  self->session_pcm_frame_queues =
+  self->session_pcm_sample_queues =
     g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL,
-                           free_pcm_frame_queue);
-  g_return_if_fail (self->session_pcm_frame_queues != NULL);
+                           free_pcm_sample_queue);
+  g_return_if_fail (self->session_pcm_sample_queues != NULL);
   shout_init ();
   self->shout = shout_new ();
   g_return_if_fail (self->shout != NULL);
@@ -164,6 +166,8 @@ mumble_application_init (MumbleApplication *self)
     }
 
   vorbis_comment_clear (&self->vorbis_comment);
+
+  g_mutex_init (&self->mutex);
 }
 
 void
@@ -179,7 +183,7 @@ mumble_application_finalize (GObject *gobject)
   vorbis_info_clear (&self->vorbis_info);
   shout_close (self->shout);
   shout_shutdown ();
-  g_object_unref (self->session_pcm_frame_queues);
+  g_object_unref (self->session_pcm_sample_queues);
   g_object_unref (self->session_opus_decoders);
   g_object_unref (self->net);
   g_object_unref (self->set);
@@ -269,18 +273,18 @@ get_pcm_frames_length (gint32 Fs, gint channels)
 }
 
 void
-write_pcm_frames_to_shout (MumbleApplication *self, gfloat *pcm_frames,
-                           gsize pcm_frames_length)
+write_pcm_samples_to_shout (MumbleApplication *self, gfloat *samples,
+                            gsize samples_length)
 {
   gfloat **buffer = vorbis_analysis_buffer (&self->vorbis_dsp_state,
-                                            pcm_frames_length / channels);
+                                            samples_length / channels);
   // Interleaved -> non interleaved
-  for (gsize i = 0; i < pcm_frames_length; i++)
+  for (gsize i = 0; i < samples_length; i++)
     {
-      buffer[i % channels][i / channels] = pcm_frames[i];
+      buffer[i % channels][i / channels] = samples[i];
     }
   int r = vorbis_analysis_wrote (&self->vorbis_dsp_state,
-                                 pcm_frames_length / channels);
+                                 samples_length / channels);
   g_return_if_fail (r == 0);
   while (vorbis_analysis_blockout
          (&self->vorbis_dsp_state, &self->vorbis_block) == 1)
@@ -309,6 +313,69 @@ write_pcm_frames_to_shout (MumbleApplication *self, gfloat *pcm_frames,
     }
 }
 
+gpointer
+shout_thread (gpointer data)
+{
+  MumbleApplication *self = MUMBLE_APPLICATION (data);
+  while (1)
+    {
+      g_mutex_lock (&self->mutex);
+      GArray *arr = g_array_new (FALSE, FALSE, sizeof (gfloat));
+      g_array_set_size (arr, 480);
+          for (int i = 0; i <= 480; i++)
+            {
+                  ((gfloat *) arr->data)[i] = 0;
+            }
+      guint32 session_id;
+      GQueue *queue;
+      GHashTableIter iter;
+      g_hash_table_iter_init (&iter, self->session_pcm_sample_queues);
+      while (g_hash_table_iter_next (&iter, (gpointer *) & session_id,
+                                     (gpointer *) & queue))
+        {
+          for (int i = 0; i <= 480; i++)
+            {
+              gfloat *sample = g_queue_pop_head (queue);
+              if (sample)
+                {
+                  ((gfloat *) arr->data)[i] =
+                    ((gfloat *) arr->data)[i] + *sample;
+                }
+            }
+        }
+      write_pcm_samples_to_shout (self, (gfloat *) arr->data, arr->len);
+      g_array_unref (arr);
+      g_mutex_unlock (&self->mutex);
+      g_usleep(5000);
+    }
+  return NULL;
+}
+
+void
+enqueue_pcm_samples (MumbleApplication *self, guint32 session_id,
+                     gfloat *samples, gsize samples_length)
+{
+  g_mutex_lock (&self->mutex);
+  GQueue *queue;
+  if (g_hash_table_lookup_extended
+      (self->session_pcm_sample_queues, GINT_TO_POINTER (session_id),
+       NULL, (gpointer) & queue) == FALSE)
+    {
+      queue = g_queue_new ();
+      g_hash_table_insert (self->session_pcm_sample_queues,
+                           GINT_TO_POINTER (session_id), queue);
+    }
+  g_return_if_fail (queue != NULL);
+
+  for (gsize i = 0; i < samples_length; i++)
+    {
+      gfloat *sample = g_malloc0 (sizeof (samples[i]));
+      *sample = samples[i];
+      g_queue_push_tail (queue, sample);
+    }
+  g_mutex_unlock (&self->mutex);
+}
+
 void
 read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
                 guint read_index, guint32 session_id)
@@ -320,13 +387,9 @@ read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
   OpusDecoder *decoder = get_decoder (self, session_id, channels);
   g_return_if_fail (decoder != NULL);
 
-  guint32 opus_length =
-    (guint32) packet_data_stream_decode (data, &read_index);
-  // Check terminator bit
-  const gboolean opus_last_frame = (opus_length & 0x2000) != 0 ? TRUE : FALSE;
-  // Clear terminator bit
-  opus_length = opus_length & 0x1FFF;
-  g_return_if_fail (opus_length <= 0x1FFF);
+  guint16 opus_header =
+    (guint16) packet_data_stream_decode (data, &read_index);
+  guint16 opus_length = opus_header & 0x1FFF;
   g_return_if_fail (read_index + opus_length <= data_length);
   const gsize pcm_frames_length = get_pcm_frames_length (48000, channels);
   gfloat *pcm_frames = g_malloc0 (sizeof (gfloat) * pcm_frames_length);
@@ -335,10 +398,9 @@ read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
   g_return_if_fail (err >= 0);
   printf ("OPUS Decoded %d samples from %" G_GSIZE_FORMAT " bytes\n", err,
           data_length);
-  //enqueue_pcm_frames (self, session_id,
-  write_pcm_frames_to_shout (self, pcm_frames, (gsize) err * channels);
+  enqueue_pcm_samples (self, session_id, pcm_frames, (gsize) err * channels);
   g_free (pcm_frames);
-  if (opus_last_frame == TRUE)
+  if ((opus_header & 0x2000) != 0)
     {
       opus_decoder_ctl (decoder, OPUS_RESET_STATE);
     }
@@ -509,6 +571,7 @@ mumble_application_activate (GApplication *app)
     }
 
   g_timeout_add_seconds (20, mumble_timeout, self->net);
+  g_thread_new ("shout", shout_thread, self);
   g_application_hold (app);
   goto finally;
 
