@@ -18,6 +18,7 @@
 */
 
 #include <stdio.h>
+#include <string.h>
 #include <inttypes.h>
 
 #include <opus/opus.h>
@@ -316,16 +317,16 @@ write_pcm_samples_to_shout (MumbleApplication *self, gfloat *samples,
 gpointer
 shout_thread (gpointer data)
 {
+  const int arr_length = 480;
+  gfloat arr[arr_length];
   MumbleApplication *self = MUMBLE_APPLICATION (data);
   while (1)
     {
       g_mutex_lock (&self->mutex);
-      GArray *arr = g_array_new (FALSE, FALSE, sizeof (gfloat));
-      g_array_set_size (arr, 480);
-          for (int i = 0; i <= 480; i++)
-            {
-                  ((gfloat *) arr->data)[i] = 0;
-            }
+      for (int i = 0; i < arr_length; i++)
+        {
+          arr[i] = 0;
+        }
       guint32 session_id;
       GQueue *queue;
       GHashTableIter iter;
@@ -333,20 +334,18 @@ shout_thread (gpointer data)
       while (g_hash_table_iter_next (&iter, (gpointer *) & session_id,
                                      (gpointer *) & queue))
         {
-          for (int i = 0; i <= 480; i++)
+          for (int i = 0; i < arr_length; i++)
             {
               gfloat *sample = g_queue_pop_head (queue);
               if (sample)
                 {
-                  ((gfloat *) arr->data)[i] =
-                    ((gfloat *) arr->data)[i] + *sample;
+                  arr[i] += *sample;
                 }
             }
         }
-      write_pcm_samples_to_shout (self, (gfloat *) arr->data, arr->len);
-      g_array_unref (arr);
+      write_pcm_samples_to_shout (self, arr, arr_length);
       g_mutex_unlock (&self->mutex);
-      g_usleep(5000);
+      g_usleep (5000);
     }
   return NULL;
 }
