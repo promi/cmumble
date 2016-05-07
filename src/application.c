@@ -35,7 +35,7 @@
 
 #include "application.h"
 
-const int channels = 1;
+const int channels = 2;
 
 typedef struct _MumbleApplication
 {
@@ -294,9 +294,10 @@ read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
   g_return_if_fail (err >= 0);
   printf ("OPUS Decoded %d samples from %" G_GSIZE_FORMAT " bytes\n", err,
           data_length);
+  // enqueue_pcm_frames (self, session_id, 
   gfloat **buffer = vorbis_analysis_buffer (&self->vorbis_dsp_state,
                                             err);
-  for (gsize i = 0; i < err; i++)
+  for (gint i = 0; i < (err * channels); i++)
     {
       buffer[i % channels][i / channels] = pcm_frames[i];
     }
