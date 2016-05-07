@@ -269,42 +269,19 @@ get_pcm_frames_length (gint32 Fs, gint channels)
 }
 
 void
-read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
-                guint read_index, guint32 session_id)
+write_pcm_frames_to_shout (MumbleApplication *self, gfloat *pcm_frames,
+                           gsize pcm_frames_length)
 {
-  g_return_if_fail (self != NULL);
-  g_return_if_fail (data != NULL);
-  g_return_if_fail (data_length > 0);
-  g_return_if_fail (channels == 1 || channels == 2);
-  OpusDecoder *decoder = get_decoder (self, session_id, channels);
-  g_return_if_fail (decoder != NULL);
-
-  guint32 opus_length =
-    (guint32) packet_data_stream_decode (data, &read_index);
-  // Check terminator bit
-  const gboolean opus_last_frame = (opus_length & 0x2000) != 0 ? TRUE : FALSE;
-  // Clear terminator bit
-  opus_length = opus_length & 0x1FFF;
-  g_return_if_fail (opus_length <= 0x1FFF);
-  g_return_if_fail (read_index + opus_length <= data_length);
-  const gsize pcm_frames_length = get_pcm_frames_length (48000, channels);
-  gfloat *pcm_frames = g_malloc0 (sizeof (gfloat) * pcm_frames_length);
-  const int err = opus_decode_float (decoder, data + read_index, opus_length,
-                                     pcm_frames, pcm_frames_length, 0);
-  g_return_if_fail (err >= 0);
-  printf ("OPUS Decoded %d samples from %" G_GSIZE_FORMAT " bytes\n", err,
-          data_length);
-  // enqueue_pcm_frames (self, session_id, 
   gfloat **buffer = vorbis_analysis_buffer (&self->vorbis_dsp_state,
-                                            err);
-  for (gint i = 0; i < (err * channels); i++)
+                                            pcm_frames_length / channels);
+  // Interleaved -> non interleaved
+  for (gsize i = 0; i < pcm_frames_length; i++)
     {
       buffer[i % channels][i / channels] = pcm_frames[i];
     }
   int r = vorbis_analysis_wrote (&self->vorbis_dsp_state,
-                                 err);
+                                 pcm_frames_length / channels);
   g_return_if_fail (r == 0);
-  g_free (pcm_frames);
   while (vorbis_analysis_blockout
          (&self->vorbis_dsp_state, &self->vorbis_block) == 1)
     {
@@ -330,6 +307,37 @@ read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
             }
         }
     }
+}
+
+void
+read_opus_data (MumbleApplication *self, guint8 *data, gsize data_length,
+                guint read_index, guint32 session_id)
+{
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (data_length > 0);
+  g_return_if_fail (channels == 1 || channels == 2);
+  OpusDecoder *decoder = get_decoder (self, session_id, channels);
+  g_return_if_fail (decoder != NULL);
+
+  guint32 opus_length =
+    (guint32) packet_data_stream_decode (data, &read_index);
+  // Check terminator bit
+  const gboolean opus_last_frame = (opus_length & 0x2000) != 0 ? TRUE : FALSE;
+  // Clear terminator bit
+  opus_length = opus_length & 0x1FFF;
+  g_return_if_fail (opus_length <= 0x1FFF);
+  g_return_if_fail (read_index + opus_length <= data_length);
+  const gsize pcm_frames_length = get_pcm_frames_length (48000, channels);
+  gfloat *pcm_frames = g_malloc0 (sizeof (gfloat) * pcm_frames_length);
+  const int err = opus_decode_float (decoder, data + read_index, opus_length,
+                                     pcm_frames, pcm_frames_length, 0);
+  g_return_if_fail (err >= 0);
+  printf ("OPUS Decoded %d samples from %" G_GSIZE_FORMAT " bytes\n", err,
+          data_length);
+  //enqueue_pcm_frames (self, session_id,
+  write_pcm_frames_to_shout (self, pcm_frames, (gsize) err * channels);
+  g_free (pcm_frames);
   if (opus_last_frame == TRUE)
     {
       opus_decoder_ctl (decoder, OPUS_RESET_STATE);
