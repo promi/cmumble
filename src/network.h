@@ -92,6 +92,9 @@ void mumble_network_write_packet (MumbleNetwork *self, guint16 type,
                                   get_packed_size, mumble_message_pack pack,
                                   gpointer message, GError **err);
 
+void mumble_network_write_udp_tunnel (MumbleNetwork *self, gpointer data, 
+                                      gsize length, GError **err);
+
 /* *INDENT-OFF* */
 G_END_DECLS
 /* *INDENT-ON* */

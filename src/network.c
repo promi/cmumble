@@ -376,3 +376,38 @@ mumble_network_write_packet (MumbleNetwork *self,
       g_free (buffer);
     }
 }
+
+void
+mumble_network_write_udp_tunnel (MumbleNetwork *self, gpointer data, 
+                                 gsize length, GError **err)
+
+{
+  g_return_if_fail (self != NULL);
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (length != 0);
+  g_return_if_fail (err == NULL || *err == NULL);
+  float pos_data[3] = {0.0, 0.0, 0.0};
+  MumblePacketHeader header = {
+    MUMBLE_MESSAGE_TYPE__UDP_TUNNEL, length + sizeof pos_data
+  };
+  GError *tmp_error = NULL;
+  mumble_network_write_packet_header (self, &header, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+
+  mumble_network_write_bytes (self, data, length, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+  mumble_network_write_bytes (self, pos_data, sizeof pos_data, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+}
