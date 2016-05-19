@@ -104,70 +104,7 @@ mumble_application_init (MumbleApplication *self)
   self->shout = shout_new ();
   g_return_if_fail (self->shout != NULL);
 
-  int r = shout_set_host (self->shout, "example.com");
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  r = shout_set_protocol (self->shout, SHOUT_PROTOCOL_HTTP);
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  r = shout_set_port (self->shout, 8000);
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  r = shout_set_password (self->shout, "hackme");
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  r = shout_set_mount (self->shout, "/test.ogg");
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  r = shout_set_user (self->shout, "source");
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  shout_set_format (self->shout, SHOUT_FORMAT_OGG);
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
-  r = shout_open (self->shout);
-  printf ("%d %s\n", r, shout_get_error (self->shout));
-  g_return_if_fail (r == SHOUTERR_SUCCESS);
-
   vorbis_info_init (&self->vorbis_info);
-  vorbis_encode_init_vbr (&self->vorbis_info, channels, 48000, 0.0);
-  r = vorbis_analysis_init (&self->vorbis_dsp_state, &self->vorbis_info);
-  printf ("%d\n", r);
-  g_return_if_fail (r == 0);
-  r = vorbis_block_init (&self->vorbis_dsp_state, &self->vorbis_block);
-  g_return_if_fail (r == 0);
-  r = ogg_stream_init (&self->ogg_stream_state, 0);
-  g_return_if_fail (r == 0);
-  vorbis_comment_init (&self->vorbis_comment);
-
-  ogg_packet header_packet;
-  ogg_packet comment_header_packet;
-  ogg_packet code_header_packet;
-
-  r = vorbis_analysis_headerout (&self->vorbis_dsp_state,
-                                 &self->vorbis_comment,
-                                 &header_packet,
-                                 &comment_header_packet, &code_header_packet);
-  g_return_if_fail (r == 0);
-
-  r = ogg_stream_packetin (&self->ogg_stream_state, &header_packet);
-  g_return_if_fail (r == 0);
-  r = ogg_stream_packetin (&self->ogg_stream_state, &comment_header_packet);
-  g_return_if_fail (r == 0);
-  r = ogg_stream_packetin (&self->ogg_stream_state, &code_header_packet);
-  g_return_if_fail (r == 0);
-
-  ogg_page ogg_page;
-  while (ogg_stream_flush (&self->ogg_stream_state, &ogg_page))
-    {
-      r = shout_send (self->shout, ogg_page.header, ogg_page.header_len);
-      g_return_if_fail (r == 0);
-      r = shout_send (self->shout, ogg_page.body, ogg_page.body_len);
-      g_return_if_fail (r == 0);
-    }
-
-  vorbis_comment_clear (&self->vorbis_comment);
-
   g_mutex_init (&self->mutex);
 }
 
@@ -518,9 +455,15 @@ mumble_application_activate (GApplication *app)
 {
   MumbleApplication *self = MUMBLE_APPLICATION (app);
 
-  gchar *server_name = g_settings_get_string (self->set, "server-name");
-  guint16 server_port = g_settings_get_int (self->set, "server-port");
-  gchar *user_name = g_settings_get_string (self->set, "user-name");
+  gchar *mumble_host = g_settings_get_string (self->set, "mumble-host");
+  guint16 mumble_port = g_settings_get_int (self->set, "mumble-port");
+  gchar *mumble_user = g_settings_get_string (self->set, "mumble-user");
+
+  gchar *icecast_host = g_settings_get_string (self->set, "icecast-host");
+  guint16 icecast_port = g_settings_get_int (self->set, "icecast-port");
+  gchar *icecast_mount = g_settings_get_string (self->set, "icecast-mount");
+  gchar *icecast_user = g_settings_get_string (self->set, "icecast-user");
+  gchar *icecast_password = g_settings_get_string (self->set, "icecast-password");
 
   gchar *cert_filename = g_strconcat (g_get_user_config_dir (),
                                       "/cmumble/cmumble.pem", NULL);
@@ -536,12 +479,75 @@ mumble_application_activate (GApplication *app)
     }
   g_free (cert_filename);
 
-  mumble_network_connect (self->net, server_name, server_port, certificate,
+  int r = shout_set_host (self->shout, icecast_host);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_protocol (self->shout, SHOUT_PROTOCOL_HTTP);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_port (self->shout, icecast_port);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_password (self->shout, icecast_password);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_mount (self->shout, icecast_mount);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_set_user (self->shout, icecast_user);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  shout_set_format (self->shout, SHOUT_FORMAT_OGG);
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  r = shout_open (self->shout);
+  printf ("%d %s\n", r, shout_get_error (self->shout));
+  g_return_if_fail (r == SHOUTERR_SUCCESS);
+
+  vorbis_encode_init_vbr (&self->vorbis_info, channels, 48000, 0.0);
+  r = vorbis_analysis_init (&self->vorbis_dsp_state, &self->vorbis_info);
+  printf ("%d\n", r);
+  g_return_if_fail (r == 0);
+  r = vorbis_block_init (&self->vorbis_dsp_state, &self->vorbis_block);
+  g_return_if_fail (r == 0);
+  r = ogg_stream_init (&self->ogg_stream_state, 0);
+  g_return_if_fail (r == 0);
+  vorbis_comment_init (&self->vorbis_comment);
+
+  ogg_packet header_packet;
+  ogg_packet comment_header_packet;
+  ogg_packet code_header_packet;
+
+  r = vorbis_analysis_headerout (&self->vorbis_dsp_state,
+                                 &self->vorbis_comment,
+                                 &header_packet,
+                                 &comment_header_packet, &code_header_packet);
+  g_return_if_fail (r == 0);
+
+  r = ogg_stream_packetin (&self->ogg_stream_state, &header_packet);
+  g_return_if_fail (r == 0);
+  r = ogg_stream_packetin (&self->ogg_stream_state, &comment_header_packet);
+  g_return_if_fail (r == 0);
+  r = ogg_stream_packetin (&self->ogg_stream_state, &code_header_packet);
+  g_return_if_fail (r == 0);
+
+  ogg_page ogg_page;
+  while (ogg_stream_flush (&self->ogg_stream_state, &ogg_page))
+    {
+      r = shout_send (self->shout, ogg_page.header, ogg_page.header_len);
+      g_return_if_fail (r == 0);
+      r = shout_send (self->shout, ogg_page.body, ogg_page.body_len);
+      g_return_if_fail (r == 0);
+    }
+
+  vorbis_comment_clear (&self->vorbis_comment);
+
+  mumble_network_connect (self->net, mumble_host, mumble_port, certificate,
                           &err);
   if (err != NULL)
     {
       fprintf (stderr, "Could not connect to the server '%s:%d': '%s'\n",
-               server_name, server_port, err->message);
+               mumble_host, mumble_port, err->message);
       goto fail_cleanup;
     }
 
@@ -553,7 +559,7 @@ mumble_application_activate (GApplication *app)
       goto fail_cleanup;
     }
 
-  send_authenticate (self->net, user_name, &err);
+  send_authenticate (self->net, mumble_user, &err);
   if (err != NULL)
     {
       fprintf (stderr,
@@ -579,6 +585,10 @@ fail_cleanup:
   g_error_free (err);
 
 finally:
-  g_free (user_name);
-  g_free (server_name);
+  g_free (icecast_password);
+  g_free (icecast_user);
+  g_free (icecast_mount);
+  g_free (icecast_host);
+  g_free (mumble_user);
+  g_free (mumble_host);
 }

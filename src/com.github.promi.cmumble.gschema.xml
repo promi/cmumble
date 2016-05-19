@@ -4,24 +4,53 @@
 
   <schema path="/com/github/promi/cmumble/" id="com.github.promi.cmumble">
 
-    <key name='server-name' type='s'>
+    <key name='mumble-host' type='s'>
       <default>'mumble.example.com'</default>
       <summary>Hostname of the Mumble server</summary>
       <description/>
     </key>
 
-    <key name='server-port' type='i'>
+    <key name='mumble-port' type='i'>
       <default>64738</default>
       <summary>TCP / UDP port of the Mumble server</summary>
       <description/>
     </key>
 
-    <key name='user-name' type='s'>
-      <default>'Testuser1'</default>
-      <summary>User name</summary>
+    <key name='mumble-user' type='s'>
+      <default>'cmumble_user'</default>
+      <summary>Mumble username</summary>
       <description/>
     </key>
 
+    <key name='icecast-host' type='s'>
+      <default>'icecast.example.com'</default>
+      <summary>Icecast server</summary>
+      <description/>
+    </key>
+
+    <key name='icecast-port' type='i'>
+      <default>8000</default>
+      <summary>Icecast port</summary>
+      <description/>
+    </key>
+
+    <key name='icecast-mount' type='s'>
+      <default>'/test.ogg'</default>
+      <summary>Icecast mount point</summary>
+      <description/>
+    </key>
+
+    <key name='icecast-user' type='s'>
+      <default>'source'</default>
+      <summary>Icecast source username</summary>
+      <description/>
+    </key>
+
+    <key name='icecast-password' type='s'>
+      <default>'hackme'</default>
+      <summary>Icecast source password</summary>
+      <description/>
+    </key>
   </schema>
 
 </schemalist>
