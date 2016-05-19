@@ -451,6 +451,122 @@ mumble_timeout (gpointer user_data)
 }
 
 void
+send_sound_ (MumbleNetwork *net, GError **err)
+{
+  g_return_if_fail (net != NULL);
+  g_return_if_fail (err == NULL || *err == NULL);
+
+  GError *tmp_error = NULL;
+  GFile *f = g_file_new_for_path ("test.raw");
+
+  GFileInputStream *is = g_file_read (f, NULL, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+
+  // Override global channel setting, stereo is very buggy atm
+  int channels = 1;
+
+  OpusEncoder *encoder =
+    opus_encoder_create (48000, channels, OPUS_APPLICATION_VOIP, NULL);
+  opus_encoder_ctl (encoder, OPUS_SET_VBR (0)); // CBR
+  opus_encoder_ctl (encoder, OPUS_SET_BITRATE (40000));
+  guint64 seq = 0;
+  const gsize ms_per_packet = 20;
+  while (1)
+    {
+      gsize pcm_samples_per_channel = 48000 / 1000 * ms_per_packet;
+      gsize pcm_bytes_per_channel = pcm_samples_per_channel * sizeof (gint16);
+      gsize pcm_length = pcm_bytes_per_channel * channels;
+      gint16 *pcm_buffer = g_malloc0 (pcm_length);
+
+      g_input_stream_read_all (G_INPUT_STREAM (is), pcm_buffer,
+                               pcm_length, NULL, NULL, &tmp_error);
+      if (tmp_error != NULL)
+        {
+          g_propagate_error (err, tmp_error);
+          return;
+        }
+
+      gsize opus_max_length = 1000;
+      guint8 *opus_buffer = g_malloc0 (opus_max_length);
+      gint32 opus_length_per_channel =
+        opus_encode (encoder, pcm_buffer, pcm_samples_per_channel,
+                     opus_buffer, opus_max_length);
+      if (opus_length_per_channel < 0)
+        {
+          printf ("error code = %d\n", opus_length_per_channel);
+        }
+      g_return_if_fail (opus_length_per_channel > 0);
+      gsize opus_length = ((gsize) opus_length_per_channel) * channels;
+
+      guint8 *net_buffer = g_malloc0 (opus_length + 10);
+      gsize additional_bytes = 0;
+      net_buffer[additional_bytes++] = 4 << 5;
+      if (seq <= 0x7F)
+        {
+          net_buffer[additional_bytes++] = seq;
+        }
+      else if (seq <= 0x3FFF)
+        {
+          net_buffer[additional_bytes++] = ((seq >> 8) & 0x3F) | 0x80;
+          net_buffer[additional_bytes++] = seq & 0xFF;
+        }
+      if (opus_length <= 0x7F)
+        {
+          net_buffer[additional_bytes++] = opus_length;
+        }
+      else if (opus_length <= 0x3FFF)
+        {
+          net_buffer[additional_bytes++] = ((opus_length >> 8) & 0x3F) | 0x80;
+          net_buffer[additional_bytes++] = opus_length & 0xFF;
+        }
+      memcpy (net_buffer + additional_bytes, opus_buffer, opus_length);
+      seq += ms_per_packet / 10;
+      printf ("SEQ = %" G_GINT64_FORMAT " \n", seq);
+      if (seq > 32767)
+        {
+          break;
+        }
+      mumble_network_write_udp_tunnel (net, net_buffer,
+                                       opus_length + additional_bytes,
+                                       &tmp_error);
+      if (tmp_error != NULL)
+        {
+          g_propagate_error (err, tmp_error);
+          return;
+        }
+      const gsize MS_PER_US = 1000;
+      g_usleep (ms_per_packet * MS_PER_US);
+    }
+  g_input_stream_close (G_INPUT_STREAM (is), NULL, &tmp_error);
+  if (tmp_error != NULL)
+    {
+      g_propagate_error (err, tmp_error);
+      return;
+    }
+  g_object_unref (f);
+}
+
+gboolean
+send_sound (gpointer user_data)
+{
+  printf ("send sound\n");
+  MumbleNetwork *net = MUMBLE_NETWORK (user_data);
+  GError *err = NULL;
+  send_sound_ (net, &err);
+  if (err != NULL)
+    {
+      fprintf (stderr,
+               "could not send sound to the server: %s\n", err->message);
+      return FALSE;
+    }
+  return FALSE;
+}
+
+void
 mumble_application_activate (GApplication *app)
 {
   MumbleApplication *self = MUMBLE_APPLICATION (app);
@@ -463,7 +579,8 @@ mumble_application_activate (GApplication *app)
   guint16 icecast_port = g_settings_get_int (self->set, "icecast-port");
   gchar *icecast_mount = g_settings_get_string (self->set, "icecast-mount");
   gchar *icecast_user = g_settings_get_string (self->set, "icecast-user");
-  gchar *icecast_password = g_settings_get_string (self->set, "icecast-password");
+  gchar *icecast_password =
+    g_settings_get_string (self->set, "icecast-password");
 
   gchar *cert_filename = g_strconcat (g_get_user_config_dir (),
                                       "/cmumble/cmumble.pem", NULL);
@@ -577,6 +694,7 @@ mumble_application_activate (GApplication *app)
     }
 
   g_timeout_add_seconds (20, mumble_timeout, self->net);
+  g_timeout_add_seconds (5, send_sound, self->net);
   g_thread_new ("shout", shout_thread, self);
   g_application_hold (app);
   goto finally;
