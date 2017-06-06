@@ -305,9 +305,9 @@ mumble_application_activate (GApplication *app)
 {
   MumbleApplication *self = MUMBLE_APPLICATION (app);
 
-  gchar *server_name = g_settings_get_string (self->set, "server-name");
-  guint16 server_port = g_settings_get_int (self->set, "server-port");
-  gchar *user_name = g_settings_get_string (self->set, "user-name");
+  gchar *server_name = g_settings_get_string (self->set, "mumble-host");
+  guint16 server_port = g_settings_get_int (self->set, "mumble-port");
+  gchar *user_name = g_settings_get_string (self->set, "mumble-user");
 
   gchar *cert_filename = g_strconcat (g_get_user_config_dir (),
                                       "/cmumble/cmumble.pem", NULL);

@@ -4,19 +4,19 @@
 
   <schema path="/com/github/promi/cmumble/" id="com.github.promi.cmumble">
 
-    <key name='server-name' type='s'>
+    <key name='mumble-host' type='s'>
       <default>'mumble.example.com'</default>
       <summary>Hostname of the Mumble server</summary>
       <description/>
     </key>
 
-    <key name='server-port' type='i'>
+    <key name='mumble-port' type='i'>
       <default>64738</default>
       <summary>TCP / UDP port of the Mumble server</summary>
       <description/>
     </key>
 
-    <key name='user-name' type='s'>
+    <key name='mumble-user' type='s'>
       <default>'Testuser1'</default>
       <summary>User name</summary>
       <description/>
