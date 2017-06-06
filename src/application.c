@@ -185,13 +185,13 @@ read_audio_data (MumbleApplication *self, guint8 *data, guint32 length)
       guint read_index = 1;
       guint32 session_id =
         (guint32) packet_data_stream_decode (data, &read_index);
-      printf ("SID = %d, ", session_id);
+      //printf ("SID = %d, ", session_id);
       guint64 sequence_number = packet_data_stream_decode (data, &read_index);
-      printf ("SEQ = %" PRIu64 ", ", sequence_number);
+      //printf ("SEQ = %" PRIu64 ", ", sequence_number);
       if (type == 4)
         {
           // Opus data
-          printf ("OPUS ");
+          //printf ("OPUS ");
           GQueue *queue;
           if (g_hash_table_lookup_extended
               (self->session_opus_data, GINT_TO_POINTER (session_id), NULL,
@@ -273,7 +273,7 @@ read_message (MumbleNetwork *net, MumbleMessageType type, guint8 *data,
     }
   else
     {
-      printf ("%d[%d] ", type, length);
+      // printf ("%d[%d] ", type, length);
     }
 
   g_free (data);
@@ -283,7 +283,7 @@ read_message (MumbleNetwork *net, MumbleMessageType type, guint8 *data,
 gboolean
 mumble_timeout (gpointer user_data)
 {
-  printf ("PING\n");
+  // printf ("PING\n");
   MumbleNetwork *net = MUMBLE_NETWORK (user_data);
   GError *err = NULL;
   send_ping (net, &err);
