@@ -216,8 +216,11 @@ read_audio_data (MumbleApplication *self, guint8 *data, guint32 length)
           frame->length = frame->length & 0x1FFF;
           // WARNING: The length must be cleaned up here
           g_return_if_fail (read_index + frame->length <= length);
-          frame->data = g_memdup (data + read_index, frame->length);
-          g_queue_push_tail (queue, frame);
+          //frame->data = g_memdup (data + read_index, frame->length);
+          // g_queue_push_tail (queue, frame);
+          fprintf (stdout, "SID %d, LEN %d, LAST %d\n", session_id,
+                   frame->length, frame->last_frame);
+          g_free (frame);
         }
     }
 }
